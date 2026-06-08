@@ -1,0 +1,3448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Incident Response Simulator</title>
+<style>
+:root {
+  --bg: #0a0f1e; --surface: #111a2e; --surface-2: #16203a; --border: #1f2a44;
+  --text: #e2e8f0; --muted: #94a3b8; --dim: #64748b; --dimmer: #475569;
+  --cyan: #22d3ee; --accent: #06b6d4;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.6; min-height: 100vh;
+  background-image: radial-gradient(circle at 50% 0%, rgba(6,182,212,0.06), transparent 60%);
+}
+.serif { font-family: Georgia, "Times New Roman", serif; }
+.wrap { max-width: 1060px; margin: 0 auto; padding: 24px 20px 64px; }
+
+.topbar { display: flex; align-items: center; justify-content: space-between; padding-bottom: 20px; margin-bottom: 28px; border-bottom: 1px solid var(--border); }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-mark { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); color: var(--cyan); font-weight: 700; font-size: 15px; }
+.brand-name { font-size: 14px; font-weight: 600; letter-spacing: 0.02em; }
+.brand-name span { color: var(--cyan); }
+.topbtn { background: none; border: 1px solid var(--border); color: var(--muted); font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-family: inherit; transition: all 0.2s; }
+.topbtn:hover { border-color: var(--dim); color: var(--text); }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+.mb16 { margin-bottom: 16px; }
+.fade { animation: fadeUp 0.35s ease; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+/* Select screen */
+.intro-head { text-align: center; max-width: 640px; margin: 0 auto 36px; }
+.kicker-pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; margin-bottom: 22px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; animation: pulse 1.8s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+.kicker-pill span { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; }
+.intro-head h1 { font-size: 44px; line-height: 1.1; margin-bottom: 14px; }
+.intro-lead { color: var(--muted); font-size: 18px; }
+
+.sc-grid { display: grid; grid-template-columns: 1fr; gap: 18px; max-width: 880px; margin: 0 auto; }
+@media (min-width: 760px) { .sc-grid { grid-template-columns: 1fr 1fr; } }
+.sc-card { text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px; cursor: pointer; transition: all 0.25s; font-family: inherit; color: var(--text); }
+.sc-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--c) 45%, transparent); box-shadow: 0 0 32px color-mix(in srgb, var(--c) 12%, transparent); }
+.sc-card-top { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.sc-diff { font-family: ui-monospace, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 8px; border-radius: 6px; border: 1px solid; }
+.sc-codename { font-family: ui-monospace, monospace; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+.sc-title { font-family: Georgia, serif; font-size: 22px; font-weight: 600; color: #fff; margin-bottom: 8px; }
+.sc-blurb { color: var(--muted); font-size: 14px; line-height: 1.55; margin-bottom: 16px; }
+.sc-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.sc-tag { font-family: ui-monospace, monospace; font-size: 11px; color: var(--dim); border: 1px solid #1e293b99; background: #0f172a55; border-radius: 5px; padding: 2px 8px; }
+.sc-start { font-size: 14px; font-weight: 600; }
+.sc-note { text-align: center; color: var(--dimmer); font-size: 12px; margin-top: 26px; }
+
+/* Intro */
+.intro { max-width: 660px; margin: 0 auto; text-align: center; }
+.backlink { background: none; border: none; color: var(--dim); font-size: 13px; font-family: ui-monospace, monospace; cursor: pointer; margin-bottom: 22px; }
+.backlink:hover { color: var(--cyan); }
+.intro h1 { font-size: 44px; line-height: 1.1; margin-bottom: 14px; }
+.intro-grid { display: grid; grid-template-columns: 1fr; gap: 12px; text-align: left; margin: 28px 0; }
+@media (min-width: 560px) { .intro-grid { grid-template-columns: 1fr 1fr; } }
+.intro-card { display: flex; gap: 12px; }
+.intro-card .it { font-size: 14px; font-weight: 600; }
+.intro-card .id { font-size: 12px; color: var(--dim); line-height: 1.5; margin-top: 2px; }
+.btn-primary { background: var(--accent); color: var(--bg); font-weight: 600; font-size: 15px; border: none; padding: 14px 32px; border-radius: 10px; cursor: pointer; font-family: inherit; transition: all 0.2s; }
+.btn-primary:hover { background: #0891b2; box-shadow: 0 0 24px rgba(6,182,212,0.4); }
+.btn-ghost { background: none; border: 1px solid var(--border); color: var(--text); font-weight: 600; font-size: 14px; padding: 13px 24px; border-radius: 10px; cursor: pointer; font-family: inherit; transition: all 0.2s; }
+.btn-ghost:hover { border-color: var(--dim); }
+.fine { color: var(--dimmer); font-size: 12px; margin-top: 16px; }
+
+/* Play layout */
+.layout { display: grid; gap: 22px; grid-template-columns: 1fr; grid-template-areas: "status" "narrative" "hud" "choices"; }
+@media (min-width: 900px) { .layout { grid-template-columns: 1fr 300px; grid-template-areas: "status hud" "narrative hud" "choices hud"; align-items: start; } .area-hud { position: sticky; top: 20px; } }
+.area-status { grid-area: status; } .area-narrative { grid-area: narrative; } .area-hud { grid-area: hud; } .area-choices { grid-area: choices; }
+
+.status-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.status-left { display: flex; align-items: center; gap: 12px; }
+.role-badge { font-family: ui-monospace, monospace; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 6px 12px; border-radius: 8px; border: 1px solid; }
+.pips { display: flex; gap: 5px; align-items: center; }
+.pip { height: 6px; border-radius: 999px; background: #334155; transition: all 0.3s; }
+.pip.on { width: 20px; background: var(--accent); }
+.pip.done { width: 6px; background: rgba(6,182,212,0.6); }
+.pip.off { width: 6px; }
+.clock { font-family: ui-monospace, monospace; font-size: 14px; color: var(--muted); }
+
+.scene-card h2 { font-size: 28px; margin-bottom: 16px; line-height: 1.2; }
+.scene-card p { margin-bottom: 14px; } .scene-card p:last-child { margin-bottom: 0; }
+
+.choice { width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; cursor: pointer; display: flex; gap: 12px; align-items: flex-start; transition: all 0.2s; margin-bottom: 12px; font-family: inherit; }
+.choice:hover { border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.05); }
+.choice-num { flex-shrink: 0; margin-top: 1px; width: 22px; height: 22px; border-radius: 6px; border: 1px solid #334155; color: var(--dim); font-size: 11px; font-family: ui-monospace, monospace; display: grid; place-items: center; transition: all 0.2s; }
+.choice:hover .choice-num { border-color: var(--accent); color: var(--accent); }
+.choice-label { display: block; color: var(--text); font-weight: 500; line-height: 1.4; }
+.choice:hover .choice-label { color: #fff; }
+.choice-detail { display: block; color: var(--dim); font-size: 14px; margin-top: 4px; }
+
+/* HUD */
+.hud { display: flex; flex-direction: column; gap: 16px; }
+.hud-title { font-family: ui-monospace, monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.18em; color: var(--dim); margin-bottom: 10px; }
+.hud-sub { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
+.meter { margin-bottom: 12px; } .meter:last-child { margin-bottom: 0; }
+.meter-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+.meter-label { font-family: ui-monospace, monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
+.meter-val { font-family: ui-monospace, monospace; font-size: 11px; font-weight: 700; }
+.meter-track { height: 6px; border-radius: 999px; background: #1e293b; overflow: hidden; }
+.meter-fill { height: 100%; border-radius: 999px; transition: width 0.5s ease; }
+.good { color: #34d399; } .good.meter-fill { background: #10b981; }
+.mid { color: #fbbf24; } .mid.meter-fill { background: #f59e0b; }
+.bad { color: #f87171; } .bad.meter-fill { background: #ef4444; }
+.intel-feed { list-style: none; max-height: 260px; overflow-y: auto; padding-right: 4px; }
+.intel { font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.5; display: flex; gap: 8px; margin-bottom: 8px; }
+.intel .marker { flex-shrink: 0; }
+.intel-normal { color: var(--text); } .intel-normal .marker { color: rgba(6,182,212,0.6); }
+.intel-unconfirmed { color: rgba(245,158,11,0.7); font-style: italic; } .intel-unconfirmed .marker { color: rgba(245,158,11,0.6); }
+.intel-critical { color: #fca5a5; } .intel-critical .marker { color: #ef4444; }
+
+/* After-action */
+.aar { max-width: 760px; margin: 0 auto; }
+.aar-head { text-align: center; margin-bottom: 32px; }
+.aar-tone { font-size: 42px; margin-bottom: 8px; }
+.tone-win { color: #34d399; } .tone-mixed { color: #fbbf24; } .tone-loss { color: #f87171; }
+.aar-kicker { font-family: ui-monospace, monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--dim); margin-bottom: 10px; }
+.aar-head h2 { font-size: 34px; line-height: 1.15; margin-bottom: 18px; }
+.aar-body { text-align: left; max-width: 640px; margin: 0 auto; }
+.aar-body p { color: var(--muted); margin-bottom: 12px; }
+.grade-row { display: flex; align-items: center; justify-content: space-between; }
+.gr-label { font-family: ui-monospace, monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--dim); margin-bottom: 4px; }
+.gr-sub { color: var(--muted); font-size: 14px; }
+.grade-letter { font-family: Georgia, serif; font-size: 64px; font-weight: 700; line-height: 1; }
+.grade-good { color: #34d399; } .grade-mid { color: #fbbf24; } .grade-bad { color: #f87171; }
+.grade-score { font-family: ui-monospace, monospace; font-size: 14px; color: var(--dim); text-align: right; }
+.aar-meters { display: grid; grid-template-columns: 1fr; gap: 4px 32px; }
+@media (min-width: 560px) { .aar-meters { grid-template-columns: 1fr 1fr; } }
+.wl-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px; }
+@media (min-width: 560px) { .wl-grid { grid-template-columns: 1fr 1fr; } }
+.wl-title { font-family: ui-monospace, monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 12px; }
+.wl-win .wl-title { color: #34d399; } .wl-loss .wl-title { color: #f87171; }
+.wl-item { display: flex; gap: 8px; font-size: 14px; color: var(--text); margin-bottom: 8px; line-height: 1.5; }
+.wl-item .s { flex-shrink: 0; font-weight: 700; }
+.wl-win .s { color: #34d399; } .wl-loss .s { color: #f87171; }
+.wl-empty { color: var(--dim); font-style: italic; font-size: 14px; }
+.trail-item { display: flex; gap: 12px; font-size: 14px; margin-bottom: 8px; }
+.trail-tag { flex-shrink: 0; font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 6px; border-radius: 4px; height: fit-content; margin-top: 2px; }
+.trail-choice { color: var(--muted); line-height: 1.5; }
+.aar-actions { display: flex; flex-direction: column; gap: 12px; justify-content: center; margin-top: 8px; }
+@media (min-width: 560px) { .aar-actions { flex-direction: row; } }
+.aar-fine { text-align: center; color: var(--dimmer); font-size: 12px; margin-top: 16px; }
+
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand"><div class="brand-mark">IR</div><div class="brand-name">IR Simulator<span>.</span></div></div>
+    <button class="topbtn" id="topBtn" onclick="backToSelect()" style="display:none">Change scenario</button>
+  </div>
+  <div id="app"></div>
+</div>
+<script>
+const insiderScenario = (function(){
+  const exports = {}; const module = { exports: exports };
+  const require = function(){ return {}; };
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.insiderScenario = exports.FIRST_SCENE = exports.SCENES = void 0;
+/**
+ * Scenario: "Notice Period"
+ * An insider threat incident. You move through three seats:
+ *   Act 1  - SOC Analyst   (the alert)
+ *   Act 2  - Incident Commander (the response)
+ *   Act 3  - CISO          (the fallout)
+ *
+ * Ground truth (revealed to the player only through good play):
+ * Daniel Cho, Senior Platform Engineer, resigned 9 days ago. Last day next Friday.
+ * He is copying the customer database, the routing-engine source, and a sales export
+ * to a personal cloud account, intending to take them to a stealth-stage competitor.
+ * There is real ambiguity early: he also has legitimate access to some of this for a
+ * migration he is genuinely wrapping up. The fog is real. The clock is real.
+ */
+const strongCase = (s) => s.caseStrength >= 58 && !s.flags.tippedOff;
+exports.SCENES = {
+    // ───────────────────────────── ACT 1 - SOC ANALYST ─────────────────────────
+    start: {
+        id: "start",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Fri 16:47",
+        title: "The Alert",
+        body: [
+            "It is 16:47 on a Friday. Most of the building has mentally clocked out. Your UEBA platform has not.",
+            "An alert fires: Daniel Cho, Senior Platform Engineer, has moved roughly 14 GB of data in the last hour to a destination the system tags as personal cloud storage, unverified. The same account touched a source repository outside his team's scope twenty minutes ago.",
+            "You know two things about Daniel. He is good. And he resigned nine days ago. His last day is next Friday.",
+            "He is still online right now.",
+        ],
+        intelReveal: [
+            "Daniel Cho, Senior Platform Engineer, resigned 9 days ago (last day next Fri).",
+            "(unconfirmed) ~14 GB moved in the last hour to 'personal cloud storage'.",
+            "(unconfirmed) Accessed a source repo outside his team's scope.",
+        ],
+        choices: [
+            {
+                label: "Quietly pull his full activity logs before doing anything",
+                detail: "Build a picture first. Costs time while he stays active.",
+                effect: { clock: 25, caseStrength: 10, set: ["startedQuiet"], intel: ["You began a quiet review of Daniel's recent activity."] },
+                next: "investigate1",
+            },
+            {
+                label: "Escalate to your IR lead immediately",
+                detail: "Fast, but you have little to show yet.",
+                effect: { clock: 5, set: ["escalatedThin"], trust: { exec: 2 } },
+                next: "escalate_early",
+            },
+            {
+                label: "Message Daniel and ask what he's working on",
+                detail: "Direct. He will know someone is watching.",
+                effect: { clock: 8, set: ["tippedOff", "confrontedEarly", "heavyHanded"], caseStrength: -5 },
+                next: "confront_early",
+            },
+            {
+                label: "Disable his account right now to stop the bleeding",
+                detail: "Containment first. Consequences later.",
+                effect: {
+                    clock: 6,
+                    dataExposure: -8,
+                    caseStrength: -8,
+                    set: ["tippedOff", "disabledEarly", "heavyHanded", "contained"],
+                    trust: { eng: -15, legal: -10 },
+                    intel: ["You force-disabled Daniel's account. Any in-flight session was cut."],
+                },
+                next: "disable_early",
+            },
+        ],
+    },
+    investigate1: {
+        id: "investigate1",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Fri 17:12",
+        title: "What the Logs Say",
+        body: [
+            "You dig. The picture sharpens, and it is not flattering to Daniel.",
+            "The 14 GB includes an export of the customer database. The files were renamed on the way out: customer_master became q3_personal_photos.zip. The destination resolves to a personal Dropbox account. He also pulled the routing-engine source, which has nothing to do with the migration he is supposedly finishing.",
+            "Then you see it. A scheduled task on his workstation, set to run at 18:00, pointed at the rest of the archive. It is 17:12.",
+        ],
+        intelReveal: [
+            "Files were renamed to disguise them (customer_master -> q3_personal_photos.zip).",
+            "Destination confirmed: a personal Dropbox account.",
+            "He pulled routing-engine source code, outside his migration's scope.",
+            "A scheduled task runs at 18:00 to push the remaining archive.",
+        ],
+        choices: [
+            {
+                label: "Preserve evidence properly before anyone touches anything",
+                detail: "Image the system, snapshot logs, document chain of custody.",
+                effect: {
+                    clock: 30,
+                    caseStrength: 22,
+                    set: ["preservedEvidence"],
+                    intel: ["You imaged the relevant systems and documented a clean chain of custody."],
+                },
+                next: "preserve",
+            },
+            {
+                label: "Escalate now - this is clearly enough to act on",
+                detail: "You have intent and method. Hand it up.",
+                effect: { clock: 8, caseStrength: 6, set: ["escalatedSolid"] },
+                next: "escalate_solid",
+            },
+            {
+                label: "Keep digging for what he plans to DO with it",
+                detail: "Motive and destination. The clock is at 17:12.",
+                effect: { clock: 33, caseStrength: 14, set: ["foundIntent"] },
+                next: "dig_deeper",
+            },
+        ],
+    },
+    escalate_early: {
+        id: "escalate_early",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Fri 16:55",
+        title: '"What Do You Actually Have?"',
+        body: [
+            "Your IR lead picks up on the second ring. You walk her through the alert. There is a pause.",
+            '"So you have a departing engineer moving data on a Friday, and a tool that flagged it. That is a Tuesday. What do you actually have that says this is theft and not him finishing his migration?"',
+            "She is not wrong. You have an alert and an instinct, and instincts do not hold up in a termination meeting.",
+        ],
+        choices: [
+            {
+                label: "Concede the point and go investigate properly",
+                detail: "Get the evidence before you make the call.",
+                effect: { clock: 6, trust: { exec: -2 } },
+                next: "investigate1",
+            },
+            {
+                label: "Push to disable his access anyway, just in case",
+                detail: "Better safe than sorry. Maybe.",
+                effect: {
+                    clock: 6,
+                    dataExposure: -8,
+                    caseStrength: -8,
+                    set: ["tippedOff", "disabledEarly", "heavyHanded", "contained"],
+                    trust: { eng: -15, legal: -12 },
+                    intel: ["Access disabled on suspicion, before evidence was gathered."],
+                },
+                next: "disable_early",
+            },
+        ],
+    },
+    confront_early: {
+        id: "confront_early",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Fri 16:55",
+        title: "He Reads the Message",
+        body: [
+            'You send something casual. "Hey Daniel, saw some big transfers from your box, everything ok with the migration?"',
+            "The typing indicator appears. Disappears. Appears again. Two minutes later: \"yeah just archiving my old project stuff before I lose access, didn't want to lose my notes. all good!\"",
+            "By the time you read it, your monitoring shows his Dropbox client has gone quiet and a local folder has been deleted. He knows. Whatever he does next, he does it carefully.",
+        ],
+        intelReveal: [
+            "Daniel was alerted by your message and has gone quiet.",
+            "(unconfirmed) A local folder was deleted shortly after he replied.",
+        ],
+        choices: [
+            {
+                label: "Escalate now, before he covers more tracks",
+                detail: "Damage is done. Move fast.",
+                effect: { clock: 8, trust: { exec: 2 } },
+                next: "command_center",
+            },
+            {
+                label: "Scramble to preserve whatever evidence is left",
+                detail: "Salvage the case.",
+                effect: { clock: 22, caseStrength: 8, set: ["preservedEvidence"], intel: ["You preserved what logs remained after he was tipped off."] },
+                next: "command_center",
+            },
+        ],
+    },
+    disable_early: {
+        id: "disable_early",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Fri 16:58",
+        title: "Lights Out",
+        body: [
+            "Daniel's account goes dark mid-session. Whatever was transferring stops partway. You have almost certainly stopped the bleeding.",
+            "You have also told him, in the loudest possible way, that he has been caught. And you did it before imaging a single disk. His manager is already in your messages: \"Why is Daniel locked out? He is in the middle of the prod migration cutover. This is going to break things.\"",
+            "Legal will have questions too. You acted on suspicion, fast and hard, with no documented basis yet.",
+        ],
+        intelReveal: [
+            "Transfer interrupted mid-stream. Containment likely, evidence incomplete.",
+            "Eng manager is escalating: the prod migration may break.",
+        ],
+        choices: [
+            {
+                label: "Take it to the war room and own the decision",
+                detail: "You made a call. Now coordinate the response.",
+                effect: { clock: 10 },
+                next: "command_center",
+            },
+        ],
+    },
+    dig_deeper: {
+        id: "dig_deeper",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Fri 17:45",
+        title: "The Smoking Gun",
+        body: [
+            "You go looking for motive and you find it in his drafts. An unsent email to a personal address, attached to a domain registered six weeks ago: a stealth-stage startup in your exact market.",
+            '"Here are the datasets and the core routing logic we talked about. The customer list alone gets us a year ahead. Will wipe the work machine before my last day."',
+            "This is no longer ambiguous. But it is now 17:45, and his 18:00 scheduled task is still armed.",
+        ],
+        intelReveal: [
+            "CONFIRMED INTENT: draft email to a competitor startup offering the datasets and source.",
+            'He plans to "wipe the work machine" before his last day.',
+            "The 18:00 scheduled task is still armed. ~12 minutes.",
+        ],
+        choices: [
+            {
+                label: "Move to contain the 18:00 task immediately",
+                detail: "You have your evidence. Now stop the transfer.",
+                effect: { clock: 5 },
+                next: "script_imminent",
+            },
+        ],
+    },
+    script_imminent: {
+        id: "script_imminent",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Fri 17:50",
+        title: "Ten Minutes",
+        body: [
+            "The scheduled task fires in ten minutes. When it runs, it pushes the remaining archive, the largest chunk, straight to his cloud account.",
+            "You have options, and no time to debate them. Each one trades something away.",
+        ],
+        choices: [
+            {
+                label: "Quietly kill the task and network-isolate his machine",
+                detail: "Contain without disabling the account. He may not notice immediately.",
+                effect: {
+                    clock: 6,
+                    dataExposure: -10,
+                    caseStrength: 6,
+                    set: ["contained", "quietContainment", "scriptHandled"],
+                    intel: ["You killed the scheduled task and isolated the host at the switch. The 18:00 push never happened."],
+                },
+                next: "command_center",
+            },
+            {
+                label: "Disable his account and block all egress now",
+                detail: "Certain containment. He will know instantly.",
+                effect: {
+                    clock: 4,
+                    dataExposure: -12,
+                    caseStrength: -2,
+                    set: ["contained", "tippedOff", "scriptHandled"],
+                    trust: { eng: -8 },
+                    intel: ["Account disabled and egress blocked. Containment certain. Daniel was tipped off."],
+                },
+                next: "command_center",
+            },
+            {
+                label: "Let it run and capture the transfer as live evidence",
+                detail: "Watch the crime happen. The data leaves, but you film it.",
+                effect: {
+                    clock: 12,
+                    dataExposure: 22,
+                    caseStrength: 18,
+                    set: ["watchedExfil", "foundIntent", "scriptHandled"],
+                    intel: ["You captured the 18:00 transfer in full packet detail. Airtight evidence. The data also left the building."],
+                },
+                next: "command_center",
+            },
+        ],
+    },
+    preserve: {
+        id: "preserve",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Fri 17:42",
+        title: "Chain of Custody",
+        body: [
+            "You do it right. Disk images, hashed and timestamped. Log snapshots pulled and write-protected. A contemporaneous record of every step, in case this ends up in front of a judge or an arbitrator one day.",
+            "It costs you thirty minutes, which means the 18:00 task is now a live concern. But whatever happens next, the evidence you have is clean and it will hold.",
+        ],
+        choices: [
+            {
+                label: "Neutralize the 18:00 task as part of the preservation",
+                detail: "Kill the job, isolate the host, keep it forensically clean.",
+                effect: {
+                    clock: 8,
+                    dataExposure: -10,
+                    caseStrength: 6,
+                    set: ["contained", "quietContainment", "scriptHandled"],
+                    intel: ["You disarmed the scheduled task and isolated the host while preserving the evidence chain."],
+                },
+                next: "command_center",
+            },
+            {
+                label: "Escalate to the war room and let Command decide on containment",
+                detail: "Hand up a clean case. The clock is ticking on 18:00.",
+                effect: { clock: 12, dataExposure: 8, intel: ["You escalated with evidence intact. The 18:00 task was still armed when you handed off."] },
+                next: "command_center",
+            },
+        ],
+    },
+    escalate_solid: {
+        id: "escalate_solid",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Fri 17:25",
+        title: "Handing It Up",
+        body: [
+            "You call it in with something real this time: renamed exports, a personal Dropbox, source code outside his scope, and a task armed for 18:00. Your IR lead does not ask you to justify it twice.",
+            '"Good catch. Kill that scheduled task now, isolate the host, and get in the room. You are running point on the technical side. We are standing up the response."',
+        ],
+        choices: [
+            {
+                label: "Kill the task, isolate the host, and join the war room",
+                detail: "Contain, then coordinate.",
+                effect: {
+                    clock: 10,
+                    dataExposure: -10,
+                    caseStrength: 4,
+                    set: ["contained", "quietContainment", "scriptHandled"],
+                    intel: ["Scheduled task neutralized and host isolated before 18:00."],
+                },
+                next: "command_center",
+            },
+        ],
+    },
+    // ─────────────────────────── ACT 2 - INCIDENT COMMANDER ─────────────────────
+    command_center: {
+        id: "command_center",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Fri evening",
+        title: "The War Room",
+        body: [
+            "You are running the incident now. The seat comes with a virtual room and four people who each want something different.",
+            "Priya from Legal wants caution, chain of custody, and nobody doing anything she cannot defend. Marcus, Daniel's engineering manager, thinks this is a misunderstanding and keeps mentioning the prod migration. Dana from HR has a process and would like everyone to follow it. And a VP, Ellis, has joined uninvited and wants this small, quiet, and gone by Monday.",
+            "They are all looking at you.",
+        ],
+        onEnter: (s) => {
+            // Compounding consequence: if the 18:00 task was never handled, it ran.
+            if (!s.flags.scriptHandled && !s.flags.contained) {
+                return {
+                    dataExposure: 26,
+                    intel: ["The 18:00 scheduled task ran while the response was still forming. A 40 GB archive left the network."],
+                    set: ["scriptRan"],
+                };
+            }
+        },
+        choices: [
+            {
+                label: "Run it by the book: Legal and HR in now, formal process",
+                detail: "Defensible and slow. Priya and Dana approve. Ellis fidgets.",
+                effect: {
+                    clock: 30,
+                    caseStrength: 8,
+                    set: ["loopedLegalEarly"],
+                    trust: { legal: 15, exec: -8 },
+                },
+                next: "formal_process",
+            },
+            {
+                label: "Keep it tight and technical for now, just you and IR",
+                detail: "Move fast, gather more, involve the others once you are sure.",
+                effect: {
+                    clock: 15,
+                    caseStrength: 4,
+                    trust: { eng: 8, legal: -12 },
+                    set: ["keptTight"],
+                },
+                next: "keep_tight",
+            },
+            {
+                label: "Take Ellis's route: quiet exit, NDA, make it disappear",
+                detail: "Fast and political. Legal winces. The case stops growing.",
+                effect: {
+                    clock: 12,
+                    caseStrength: -10,
+                    trust: { exec: 15, legal: -15 },
+                    set: ["quietRoute"],
+                },
+                next: "quiet_exit",
+            },
+        ],
+    },
+    formal_process: {
+        id: "formal_process",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Fri 19:30",
+        title: "By the Book",
+        body: [
+            "Priya takes the wheel on process and visibly relaxes. HR schedules a formal meeting. Legal wants access preserved under counsel so the investigation stays clean, and monitoring kept live.",
+            'Then Marcus plants his feet. "If you cut Daniel\'s access tonight, the prod migration cutover fails and we are paged all weekend. He is the only one who knows that runbook. Whatever he did, can it wait until Monday?"',
+            "Everyone looks at you again. Containment versus uptime, with Legal on one side and Engineering on the other.",
+        ],
+        choices: [
+            {
+                label: "Revoke access now under Legal's guidance, accept the prod risk",
+                detail: "Containment wins. Marcus will not enjoy his weekend.",
+                effect: {
+                    clock: 20,
+                    dataExposure: -8,
+                    set: ["contained"],
+                    trust: { legal: 8, eng: -12 },
+                },
+                next: "monitoring_decision",
+            },
+            {
+                label: "Preserve access but add enhanced monitoring and egress controls",
+                detail: "The compromise. Works if your evidence is solid.",
+                effect: {
+                    clock: 18,
+                    dataExposure: -3,
+                    caseStrength: 4,
+                    trust: { legal: 4, eng: 6 },
+                    set: ["enhancedMonitoring"],
+                },
+                next: "monitoring_decision",
+            },
+            {
+                label: "Side with Marcus, keep full access until Monday",
+                detail: "Uptime wins. He has the whole weekend with his access.",
+                effect: {
+                    clock: 12,
+                    dataExposure: 14,
+                    trust: { eng: 12, legal: -10 },
+                    set: ["weekendAccess"],
+                },
+                next: "weekend_risk",
+            },
+        ],
+    },
+    keep_tight: {
+        id: "keep_tight",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Fri 20:10",
+        title: "Need to Know",
+        body: [
+            "You keep the circle small and move quickly. It feels efficient. You make real progress on the technical picture in an hour that would have taken three with a full room.",
+            "Then Priya finds out secondhand that an active investigation into an employee has been running without Legal. She is calm in the way that is worse than shouting. \"Anything you collected tonight, I now have to assume was collected outside privilege and process. If we ever need this in a hearing, you may have just handed his lawyer the argument.\"",
+        ],
+        intelReveal: ["Legal was looped in late. Chain-of-custody and privilege concerns now hang over the evidence."],
+        onEnter: () => ({ set: ["legalUpset"], trust: { legal: -8 } }),
+        choices: [
+            {
+                label: "Apologize, bring Legal fully in, and decide on the confrontation",
+                detail: "Repair what you can and move to the next call.",
+                effect: { clock: 15, trust: { legal: 5 } },
+                next: "monitoring_decision",
+            },
+        ],
+    },
+    quiet_exit: {
+        id: "quiet_exit",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Fri 20:00",
+        title: "Make It Disappear",
+        body: [
+            "Ellis is delighted. The plan is simple: offer Daniel a clean reference and a quiet exit in exchange for signing a statement that he returned and deleted everything, and an NDA with teeth.",
+            "It is fast. It is bloodless. It also rests entirely on the honesty of a man you believe is actively stealing from you, and it pointedly avoids ever finding out how much actually left.",
+            "Priya puts one sentence on the record: \"I want it noted that we chose not to determine the scope of the loss.\"",
+        ],
+        intelReveal: ["The company is pursuing a quiet exit. Scope of data loss deliberately not determined."],
+        choices: [
+            {
+                label: "Proceed with the quiet exit",
+                detail: "Sign the papers. Hope he is honest.",
+                effect: { clock: 30, set: ["quietExitDone"], trust: { exec: 6 } },
+                next: "quiet_aftermath",
+            },
+            {
+                label: "Insist on at least a forensic scope review first",
+                detail: "Overrule Ellis. Find out what actually left.",
+                effect: { clock: 25, caseStrength: 10, trust: { exec: -10, legal: 8 } },
+                next: "monitoring_decision",
+            },
+        ],
+    },
+    monitoring_decision: {
+        id: "monitoring_decision",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Fri 21:00 / weekend",
+        title: "Watch or Move",
+        body: [
+            "The immediate fire is out, or at least contained enough to think. Now the real call: how do you bring this to a head?",
+            "Forensics can confirm what left and whether the Dropbox copies can still be preserved or pulled, but only if your case is strong enough to justify the legal process to get there. Daniel is home for the weekend. So are you, in theory.",
+        ],
+        onEnter: (s) => {
+            // Fog lifts in proportion to how good the case is.
+            if (s.caseStrength >= 58) {
+                return {
+                    intel: [
+                        "Forensics scoped the loss: customer DB (PII for ~38k people), routing-engine source, and a sales pipeline export.",
+                        "The Dropbox account was identified and a preservation request is possible.",
+                    ],
+                };
+            }
+            return {
+                intel: ["(unconfirmed) Forensics cannot yet confirm exactly what left or where it sits now. The picture is partial."],
+            };
+        },
+        choices: [
+            {
+                label: "Confront Daniel now with HR and Legal present",
+                detail: "Put the evidence on the table and demand cooperation.",
+                effect: { clock: 40 },
+                next: "confrontation",
+            },
+            {
+                label: "Run covert monitoring through the weekend",
+                detail: "Build the case. See if he reaches for it again.",
+                effect: { clock: 60, set: ["weekendMonitor"] },
+                next: "weekend_monitor",
+            },
+            {
+                label: "Bring in law enforcement and outside forensics now",
+                detail: "Serious, slower, and it makes the incident real.",
+                effect: { clock: 50, caseStrength: 10, set: ["lawEnforcement"], trust: { legal: 10, exec: -10 } },
+                next: "law_enforcement",
+            },
+        ],
+    },
+    weekend_monitor: {
+        id: "weekend_monitor",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sat–Sun",
+        title: "The Long Weekend",
+        body: [
+            "You watch and wait. Two days of his account, his endpoints, his cloud telemetry, and a lot of coffee.",
+        ],
+        onEnter: (s) => {
+            if (!s.flags.tippedOff && (s.flags.enhancedMonitoring || s.flags.weekendAccess || !s.flags.contained)) {
+                return {
+                    caseStrength: 16,
+                    dataExposure: 8,
+                    set: ["redHanded", "foundIntent"],
+                    intel: ["Saturday 02:14: he tried again. You captured a second exfiltration attempt in the act. The case is now airtight."],
+                };
+            }
+            return {
+                caseStrength: -10,
+                set: ["wentDark"],
+                intel: ["He did nothing all weekend. Either he is patient or he was already tipped off. Local traces were quietly wiped."],
+            };
+        },
+        choices: [
+            {
+                label: "Move to the confrontation with what the weekend gave you",
+                detail: "Stronger or weaker, it is time to end this.",
+                effect: { clock: 20 },
+                next: "confrontation",
+            },
+        ],
+    },
+    law_enforcement: {
+        id: "law_enforcement",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Following week",
+        title: "It Gets Real",
+        body: [
+            "Outside counsel and a federal agent join the next call. The tone changes. This is no longer an HR matter with a security flavor. It is a case.",
+            "They guide the preservation of the Dropbox evidence, advise against a confrontation that could compromise their work, and ask you, repeatedly and pointedly, whether customer data was involved. Ellis looks ill at the word subpoena. Priya looks more comfortable than she has all week.",
+        ],
+        intelReveal: ["Law enforcement engaged. Evidence preservation now handled to an admissible standard."],
+        onEnter: (s) => {
+            if (s.caseStrength >= 50) {
+                return { caseStrength: 10, set: ["foundIntent"], intel: ["With legal process, the Dropbox contents were preserved and confirmed: customer PII and source code."] };
+            }
+        },
+        choices: [
+            {
+                label: "Proceed to the fallout under law enforcement guidance",
+                detail: "The case is in motion. Now handle the business.",
+                effect: { clock: 30 },
+                next: "ciso_fallout",
+            },
+        ],
+    },
+    weekend_risk: {
+        id: "weekend_risk",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sat–Sun",
+        title: "His Weekend, His Access",
+        body: [
+            "You kept the migration alive and Daniel kept his access. The cutover runs clean. Marcus sends a thumbs up at 23:00 on Saturday.",
+            "Somewhere in those same two days, with full credentials and nobody watching closely, Daniel finishes what he started. By Monday the telemetry shows it: more data out, and a careful sweep of local artifacts on his workstation. The migration was real. So was the cover it gave him.",
+        ],
+        intelReveal: [
+            "Over the weekend, additional data left the network under Daniel's legitimate access.",
+            "Local forensic artifacts were wiped. Recovery will be harder.",
+        ],
+        onEnter: () => ({ dataExposure: 22, caseStrength: -8, set: ["weekendLoss"] }),
+        choices: [
+            {
+                label: "Regroup Monday and take it to the executive table",
+                detail: "Assess the damage. Move to the fallout.",
+                effect: { clock: 20 },
+                next: "ciso_fallout",
+            },
+        ],
+    },
+    confrontation: {
+        id: "confrontation",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "The meeting",
+        title: "Across the Table",
+        body: [
+            "Daniel sits down with the easy confidence of a man who has decided he is smarter than the room. HR on one side, Legal on the other, you in the middle with a folder.",
+            "How you open this decides how it ends.",
+        ],
+        choices: [
+            {
+                label: "Lay out the evidence calmly and offer a path to cooperate",
+                detail: "Let the facts do the work. Leave him a door.",
+                effect: { clock: 20, caseStrength: 4, trust: { legal: 6 } },
+                next: (s) => (strongCase(s) ? "confront_success" : "confront_backfire"),
+            },
+            {
+                label: "Confront him directly: name the theft, demand the devices",
+                detail: "Hit hard. Powerful with a strong case, reckless without one.",
+                effect: { clock: 15, set: ["heavyHanded"], trust: { legal: -4 } },
+                next: (s) => (strongCase(s) ? "confront_success" : "confront_backfire"),
+            },
+        ],
+    },
+    confront_success: {
+        id: "confront_success",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "The meeting",
+        title: "The Folder Wins",
+        body: [
+            "You lay it out: the renamed exports, the Dropbox, the source pull, the draft email to the startup. Each page lands a little heavier than the last. The confidence drains out of him in real time.",
+            "His options have evaporated and he knows it. With counsel's quiet advice, he signs a forensic deletion order, surrenders his personal devices for imaging, and agrees to cooperate. The copies get pulled and verified gone.",
+            "It is about as clean as one of these ever gets.",
+        ],
+        intelReveal: ["Daniel cooperated under the weight of evidence. Devices surrendered, copies verified deleted."],
+        onEnter: () => ({ dataExposure: -25, caseStrength: 8, set: ["resolvedClean", "recovered"] }),
+        choices: [
+            {
+                label: "Move to the fallout as CISO",
+                detail: "The investigation is won. Now the obligations.",
+                effect: { clock: 20 },
+                next: "ciso_fallout",
+            },
+        ],
+    },
+    confront_backfire: {
+        id: "confront_backfire",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "The meeting",
+        title: "Six Words",
+        body: [
+            'You make your case. Daniel listens, tilts his head, and says the six words that end the meeting: "I would like a lawyer present."',
+            "Whatever you had, you needed it airtight before this moment, and it was not. He says nothing else. By morning his personal devices are, his attorney assures everyone, unavailable. The Dropbox account is gone. Without a confession or preserved copies, what you can actually prove shrinks to what you collected before he walked in.",
+            "If that was thin, this just got expensive.",
+        ],
+        intelReveal: ["Daniel retained counsel and went silent. Personal devices and cloud copies are now out of reach."],
+        onEnter: () => ({ set: ["lawyeredUp"], caseStrength: -10, trust: { exec: -8 } }),
+        choices: [
+            {
+                label: "Take what you have to the executive table",
+                detail: "Salvage what you can. Move to the fallout.",
+                effect: { clock: 20 },
+                next: "ciso_fallout",
+            },
+        ],
+    },
+    quiet_aftermath: {
+        id: "quiet_aftermath",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Monday",
+        title: "Signed and Filed",
+        body: [
+            "Daniel signs everything with a small, knowing smile. He returns a laptop, attests in writing that he deleted all copies, and walks out with a clean reference and an NDA.",
+            "The incident is, on paper, closed. Ellis calls it a model of discretion. Nobody ever measured what left, which means nobody can say it came back. The signed attestation sits in a folder, doing all of the work that an actual forensic verification would have done, assuming a thief tells the truth on his way out the door.",
+        ],
+        intelReveal: ["Incident closed via signed attestation. No forensic verification of deletion was performed."],
+        onEnter: () => ({ set: ["unverifiedClosure"] }),
+        choices: [
+            {
+                label: "Close the file and brief leadership",
+                detail: "Move to the fallout.",
+                effect: { clock: 20 },
+                next: "ciso_fallout",
+            },
+        ],
+    },
+    // ──────────────────────────────── ACT 3 - CISO ──────────────────────────────
+    ciso_fallout: {
+        id: "ciso_fallout",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Monday, exec floor",
+        title: "The Obligation",
+        body: [
+            "You are in the CISO's seat now, and the question on the table is no longer technical. It is whether, and how, to tell the outside world.",
+            "The forensic report is in front of you. What it says depends on how well the last seventy-two hours went.",
+        ],
+        onEnter: (s) => {
+            // Final fog lift, scaled by case quality and exposure.
+            if (s.flags.unverifiedClosure) {
+                return {
+                    intel: ["FINAL REPORT: scope undetermined by choice. Whether customer data is in a competitor's hands is unknown and now unknowable."],
+                };
+            }
+            if (s.caseStrength >= 55 || s.flags.lawEnforcement) {
+                const recovered = s.flags.recovered || s.dataExposure < 30;
+                return {
+                    intel: [
+                        recovered
+                            ? "FINAL REPORT: exfil scoped and contained. Customer PII (~38k) and source were copied but recovered/deleted before any third-party access. Disclosure may be limited."
+                            : "FINAL REPORT: confirmed exfil of customer PII (~38k) and source code to an external party. Disclosure obligations are triggered.",
+                    ],
+                };
+            }
+            return {
+                intel: ["FINAL REPORT: evidence is partial. You cannot confirm what reached a third party, and you cannot rule it out. Disclosure is a judgment call made in fog."],
+            };
+        },
+        choices: [
+            {
+                label: "Proactively notify affected customers and regulators now",
+                detail: "Transparent and costly. The defensible high road.",
+                effect: { clock: 30, set: ["properDisclosure"], trust: { legal: 10, exec: -6 } },
+                next: (s) => resolveEnding(s, "proactive"),
+            },
+            {
+                label: "Disclose the legal minimum, quietly, as late as allowed",
+                detail: "Limit the blast radius. Legal's nervous compromise.",
+                effect: { clock: 20, trust: { exec: 6, legal: -2 } },
+                next: (s) => resolveEnding(s, "minimal"),
+            },
+            {
+                label: "Decline to disclose - argue it was contained before exposure",
+                detail: "Only defensible if you truly contained it. Otherwise a gamble.",
+                effect: { clock: 15, trust: { exec: 8 } },
+                next: (s) => resolveEnding(s, "none"),
+            },
+        ],
+    },
+    // ──────────────────────────────── ENDINGS ───────────────────────────────────
+    ending_textbook: {
+        id: "ending_textbook",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Textbook",
+        isEnding: true,
+        endingTitle: "Outcome: Textbook Response",
+        endingTone: "win",
+        body: [
+            "You caught it inside the hour, contained it before the bulk left, built a case clean enough to end the confrontation in a signed deletion order, and handled disclosure like someone who has read the regulations rather than feared them.",
+            "Daniel's startup launches without your customer list. Legal sleeps. The board hears a story about a control that worked and a team that ran toward the alarm instead of away from it. This is the version they put in the awareness deck.",
+            "Nobody outside the room will ever know how close it was. That is what winning looks like in this job: a quiet Monday.",
+        ],
+    },
+    ending_contained_messy: {
+        id: "ending_contained_messy",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Contained, Barely",
+        isEnding: true,
+        endingTitle: "Outcome: Contained, But It Left Marks",
+        endingTone: "mixed",
+        body: [
+            "You stopped the worst of it. The data is mostly accounted for and the company is not on the front page. But the path here was rougher than it needed to be: trust got spent, a process got skipped, and a few people will remember how the sausage was made.",
+            "The incident is closed and the resume-grade summary is honest enough: threat contained, lessons logged. The footnotes are where the real story lives, and you will be rewriting a few runbooks because of them.",
+            "A win. Just not the kind you frame.",
+        ],
+    },
+    ending_lawyered: {
+        id: "ending_lawyered",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "He Walked",
+        isEnding: true,
+        endingTitle: "Outcome: He Lawyered Up and Walked",
+        endingTone: "loss",
+        body: [
+            "Somewhere along the way he learned he was being watched before you had a case that could survive a lawyer, and a lawyer is exactly what he got. The personal devices vanished. The cloud copies evaporated. What you can prove now fits on an index card.",
+            "He starts at the competitor on schedule. You spend the next quarter explaining to leadership why a textbook-looking investigation produced no usable outcome, and the honest answer, that the case was tipped before it was built, is not one anyone enjoys hearing.",
+            "The data was real. The theft was real. The proof is gone.",
+        ],
+    },
+    ending_slow_bleed: {
+        id: "ending_slow_bleed",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "The Horse Has Bolted",
+        isEnding: true,
+        endingTitle: "Outcome: Responsible, and Too Late",
+        endingTone: "loss",
+        body: [
+            "You did a lot of things right. You also did them slowly, and a determined insider with valid credentials does not wait for your process to mature. By the time the controls closed, the data was already sitting in someone else's cloud.",
+            "You have excellent logs of a loss you did not prevent. The disclosure goes out, the regulators are satisfied with your candor, and the customers are notified in clear and timely language about the breach you watched develop in good order.",
+            "Diligent is not the same as effective. This was diligent.",
+        ],
+    },
+    ending_friendly_fire: {
+        id: "ending_friendly_fire",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Friendly Fire",
+        isEnding: true,
+        endingTitle: "Outcome: You Were Right, and It Looks Wrong",
+        endingTone: "loss",
+        body: [
+            "He was guilty. You were right the whole time. But you moved hard and early on an alert and an instinct, before the evidence existed to back the force you used, and from the outside that is indistinguishable from a security team torching a departing employee on a hunch.",
+            "Without a clean case, the accusation reads as harassment. HR is managing a grievance, Legal is managing exposure, and the engineering org is quietly wondering whether reporting their own notice will get them treated like a suspect. The thief got a sympathetic narrative you handed him for free.",
+            "Being correct is worth very little if you cannot show your work.",
+        ],
+    },
+    ending_public_breach: {
+        id: "ending_public_breach",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Page One",
+        isEnding: true,
+        endingTitle: "Outcome: It Became Public, the Hard Way",
+        endingTone: "loss",
+        body: [
+            "The data left, in volume, including customer PII, and the response never caught up to it. Worse, the disclosure was slow and grudging, which means the story the world hears is not about a sophisticated insider. It is about a company that knew and dragged its feet.",
+            "Regulators take an interest in the timeline. A reporter takes an interest in the regulators. Customers take an interest in alternatives. The insider is a footnote in your incident now; the headline is you.",
+            "The breach was a bad day. The handling is what becomes the case study.",
+        ],
+    },
+    ending_quiet_timebomb: {
+        id: "ending_quiet_timebomb",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Signed, Sealed, Unverified",
+        isEnding: true,
+        endingTitle: "Outcome: The Quiet That Costs Later",
+        endingTone: "loss",
+        body: [
+            "On paper it could not be tidier. He signed, he attested, he left, and everyone got their Monday back. The decision to never measure what actually left turned a security incident into a paperwork exercise, and paperwork does not subpoena well.",
+            "Eight months later your customer list surfaces in a competitor's sales motion and a regulator asks the only question that matters: when did you know, and what did you do to verify it was contained? The answer, that you accepted a thief's signature in place of a forensic image, does not improve with the retelling.",
+            "You did not close the incident. You postponed it, and added interest.",
+        ],
+    },
+};
+// Decide which ending a disclosure choice leads to, from final state.
+// Note: `s` here is the live post-effect state object that becomes the next state,
+// so setting a flag here is intentional and persists into the report.
+function resolveEnding(s, disclosure) {
+    const dataOut = s.dataExposure >= 50 || s.flags.weekendLoss || s.flags.watchedExfil;
+    const provable = s.caseStrength >= 55 && !s.flags.lawyeredUp;
+    // Quiet, unverified closure has its own trap, unless you actually contained and proved it.
+    if (s.flags.unverifiedClosure && !provable) {
+        return "ending_quiet_timebomb";
+    }
+    // Declining to disclose when data is genuinely out and unproven-contained is reckless.
+    if (disclosure === "none" && dataOut && !(s.flags.recovered || provable)) {
+        s.flags.recklessNoDisclosure = true;
+        return "ending_public_breach";
+    }
+    // Lawyered up with data in the wild: he walked.
+    if (s.flags.lawyeredUp && dataOut) {
+        return "ending_lawyered";
+    }
+    // Acted hard on thin evidence and never built the case: friendly fire.
+    if (s.flags.heavyHanded && s.caseStrength < 45 && !s.flags.recovered) {
+        return "ending_friendly_fire";
+    }
+    // Data left and stayed left, handled responsibly: the slow bleed.
+    if (dataOut && !s.flags.recovered) {
+        if (disclosure === "minimal")
+            return "ending_public_breach";
+        return "ending_slow_bleed";
+    }
+    // Clean: contained, provable, recovered, and disclosed responsibly.
+    if (provable && (s.flags.recovered || s.dataExposure < 25) && disclosure !== "none" && avgOk(s)) {
+        return "ending_textbook";
+    }
+    return "ending_contained_messy";
+}
+function avgOk(s) {
+    return (s.trust.legal + s.trust.eng + s.trust.exec) / 3 >= 48;
+}
+exports.FIRST_SCENE = "start";
+function scoreAdjust(s) {
+    let delta = 0;
+    const wins = [];
+    const losses = [];
+    const avg = (s.trust.legal + s.trust.eng + s.trust.exec) / 3;
+    if (s.flags.contained)
+        delta += 8;
+    if (s.flags.foundIntent)
+        delta += 5;
+    if (s.flags.preservedEvidence)
+        delta += 5;
+    if (s.flags.lawEnforcement)
+        delta += 3;
+    if (s.flags.tippedOff)
+        delta -= 6;
+    if (s.flags.lawyeredUp)
+        delta -= 14;
+    if (s.flags.heavyHanded && s.caseStrength < 45)
+        delta -= 10;
+    if (s.flags.recklessNoDisclosure)
+        delta -= 12;
+    if (s.flags.preservedEvidence)
+        wins.push("You preserved forensic evidence with a clean chain of custody before acting.");
+    if (s.flags.contained)
+        wins.push("You contained the exfiltration before the bulk of the data left the network.");
+    if (s.flags.foundIntent)
+        wins.push("You uncovered hard evidence of intent, not just anomalous activity.");
+    if (s.flags.loopedLegalEarly)
+        wins.push("You brought Legal in early, keeping the response defensible.");
+    if (s.flags.lawEnforcement)
+        wins.push("You escalated to law enforcement when the scope justified it.");
+    if (s.flags.properDisclosure)
+        wins.push("You handled disclosure obligations correctly and on time.");
+    if (s.flags.tippedOff)
+        losses.push("You tipped off the subject, giving him time to react and destroy traces.");
+    if (s.flags.lawyeredUp)
+        losses.push("He retained counsel before you had a defensible case. The investigation stalled.");
+    if (s.flags.heavyHanded && s.caseStrength < 45)
+        losses.push("You acted aggressively on thin evidence. It reads as harassment, not investigation.");
+    if (s.dataExposure >= 55)
+        losses.push("A significant volume of sensitive data left the network and could not be recovered.");
+    if (s.flags.legalUpset)
+        losses.push("Legal was looped in late. Chain-of-custody gaps weakened the case.");
+    if (s.flags.recklessNoDisclosure)
+        losses.push("You declined to disclose a breach you could not prove was contained. A serious gamble.");
+    if (avg < 45)
+        losses.push("Stakeholder trust eroded. The next incident will be harder to run.");
+    return { delta, wins, losses };
+}
+exports.insiderScenario = {
+    meta: {
+        id: "insider",
+        title: "Notice Period",
+        codename: "Insider Threat",
+        blurb: "A departing engineer is moving data he should not be. Catch it, prove it, and survive the politics.",
+        premise: "A senior engineer handed in his resignation nine days ago. Tonight, your monitoring lit up. You will work this incident from three seats as it escalates: analyst, then commander, then CISO. Every decision compounds. The information is incomplete and the clock does not stop.",
+        difficulty: "Standard",
+        accent: "cyan",
+        tags: ["Insider Threat", "DFIR", "Disclosure"],
+        acts: 3,
+    },
+    firstScene: "start",
+    initialState: () => ({
+        scene: "start",
+        clock: 0,
+        caseStrength: 20,
+        dataExposure: 12,
+        trust: { legal: 60, eng: 60, exec: 60 },
+        flags: {},
+        intel: [],
+        log: [],
+    }),
+    scenes: exports.SCENES,
+    meterLabels: {
+        primary1: "Evidence",
+        primary2: "Data Exposure",
+        s1: "Legal",
+        s2: "Engineering",
+        s3: "Executive",
+    },
+    scoreAdjust,
+};
+
+  return exports.insiderScenario;
+})();
+
+const ransomwareScenario = (function(){
+  const exports = {}; const module = { exports: exports };
+  const require = function(){ return {}; };
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ransomwareScenario = void 0;
+/**
+ * Scenario: "Blast Radius"
+ * A double-extortion ransomware detonation. Three seats:
+ *   Act 1  - SOC Analyst         (the detonation)
+ *   Act 2  - Incident Commander  (containment and recovery)
+ *   Act 3  - CISO                (ransom, OFAC, and disclosure)
+ *
+ * Ground truth: a ransomware affiliate bought access from a broker six days ago
+ * via a VPN credential with no MFA. They moved laterally, staged and exfiltrated
+ * roughly 600 GB, then detonated at 23:10 Saturday. Whether your immutable backups
+ * survive depends on how fast you contain. Whether you reinfect depends on whether
+ * you eradicate before you restore. Whether you break the law depends on whether
+ * you check sanctions before you pay.
+ */
+function avgOk(s) {
+    return (s.trust.legal + s.trust.eng + s.trust.exec) / 3 >= 48;
+}
+const SCENES = {
+    // ───────────────────────────── ACT 1 - SOC ANALYST ─────────────────────────
+    rw_start: {
+        id: "rw_start",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Sat 23:10",
+        title: "Detonation",
+        body: [
+            "Saturday, 23:10. You are half-watching a movie when your phone turns into a slot machine. EDR alerts, dozens of them, cascading faster than you can read.",
+            "File servers are throwing mass-rename events. A hypervisor host just dropped offline. And on three machines so far, a text file has appeared in every directory: vellum_readme.txt. You open one. It is a ransom note. Double extortion: pay, or the data they already took goes public.",
+            "It is spreading while you read. You have seconds, not minutes, to decide how you swing first.",
+        ],
+        intelReveal: [
+            "Ransomware detonation in progress. Group signature: Vellum (RaaS affiliate).",
+            "(unconfirmed) Ransom note claims data was exfiltrated before encryption.",
+            "Encryption observed on file servers and at least one hypervisor host.",
+        ],
+        choices: [
+            {
+                label: "Isolate the affected network segments now, accept the downtime",
+                detail: "Broad containment. You will take systems down, but you stop the spread.",
+                effect: { clock: 8, caseStrength: 14, dataExposure: 6, set: ["isolatedFast", "contained"], intel: ["You isolated the affected VLANs at the switch. The spread slows sharply."] },
+                next: "rw_assess",
+            },
+            {
+                label: "Cut internet egress and kill the VPN first",
+                detail: "Sever the attacker's command channel and any ongoing exfiltration.",
+                effect: { clock: 6, caseStrength: 8, dataExposure: 2, set: ["egressCut"], intel: ["Egress filtered and the VPN concentrator disabled. The attacker's C2 channel goes dark."] },
+                next: "rw_assess",
+            },
+            {
+                label: "Scope patient zero before you start pulling cables",
+                detail: "Understand the intrusion first. The encryption keeps spreading while you look.",
+                effect: { clock: 22, caseStrength: 4, dataExposure: 12, set: ["scopedFirst", "rootCauseFound"], intel: ["You traced entry to a VPN account with no MFA, used from a foreign IP six days ago. While you traced it, encryption reached more hosts."] },
+                next: "rw_assess",
+            },
+            {
+                label: "Hit the kill switch: pull the entire network",
+                detail: "Maximum containment, maximum downtime. Nothing talks to anything.",
+                effect: { clock: 5, caseStrength: 22, dataExposure: 16, set: ["killSwitch", "contained"], intel: ["You pulled the core uplinks. The spread stops cold. So does the entire company."] },
+                next: "rw_assess",
+            },
+        ],
+    },
+    rw_assess: {
+        id: "rw_assess",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Sat 23:40",
+        title: "Taking Stock",
+        body: [
+            "The immediate bleeding is slowing. Now you need to understand what you are actually dealing with before the war room spins up and everyone starts asking questions you cannot yet answer.",
+            "Two threads matter most right now: whether your backups are still alive, and how the attacker got in. You have time for both if you are quick, but the Incident Commander is one phone call away and the clock is real.",
+        ],
+        choices: [
+            {
+                label: "Verify backup integrity immediately",
+                detail: "Everything downstream depends on whether you can restore.",
+                effect: { clock: 15 },
+                next: "rw_backups",
+            },
+            {
+                label: "Trace patient zero and the root cause",
+                detail: "You cannot eradicate what you do not understand.",
+                effect: { clock: 18 },
+                next: "rw_rootcause",
+            },
+            {
+                label: "Escalate to the Incident Commander now and stand up the bridge",
+                detail: "Get the response organized. You can scope in parallel.",
+                effect: { clock: 6 },
+                next: "rw_warroom",
+            },
+        ],
+    },
+    rw_backups: {
+        id: "rw_backups",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Sat 23:55",
+        title: "The Backups",
+        body: [
+            "You go straight for the backup infrastructure, because everything you do over the next three days hinges on what you find here.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.contained || s.flags.egressCut) {
+                return {
+                    caseStrength: 10,
+                    dataExposure: -6,
+                    set: ["backupsIntact", "backupsChecked"],
+                    intel: ["GOOD NEWS: your immutable, offline backup copy is intact. You contained before the ransomware reached the backup network. Recovery is possible without paying."],
+                };
+            }
+            return {
+                caseStrength: -4,
+                dataExposure: 8,
+                set: ["backupsHit", "backupsChecked"],
+                intel: ["BAD NEWS: the backup server was reachable and is encrypted. Your immutable copy was hit before containment. Restoring from backup is not on the table."],
+            };
+        },
+        choices: [
+            {
+                label: "Now trace the root cause before you escalate",
+                detail: "Understand the intrusion while you have a moment.",
+                effect: { clock: 16 },
+                next: "rw_rootcause",
+                show: (s) => !s.flags.rootChecked,
+            },
+            {
+                label: "Escalate to the Incident Commander with what you have",
+                detail: "Take the backup picture to the war room.",
+                effect: { clock: 6 },
+                next: "rw_warroom",
+            },
+        ],
+    },
+    rw_rootcause: {
+        id: "rw_rootcause",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Sun 00:10",
+        title: "Patient Zero",
+        body: [
+            "You follow the intrusion backward through the logs. The story assembles itself, and it is depressingly familiar.",
+            "Six days ago, a VPN account with no multi-factor authentication logged in from an IP in a country none of your staff were in. From there: credential dumping, lateral movement, a domain admin token, and a slow, patient stage-and-exfiltrate operation before tonight's detonation. The access was almost certainly bought from a broker.",
+            "You now know how to keep them out on the way back in. That matters more than it sounds.",
+        ],
+        intelReveal: [
+            "Root cause: a VPN account with no MFA, credential likely bought from an access broker.",
+            "Attacker dwell time: ~6 days. Lateral movement and domain admin compromise confirmed.",
+            "(unconfirmed) Staging activity suggests data was exfiltrated before encryption.",
+        ],
+        onEnter: () => ({ caseStrength: 12, set: ["rootCauseFound", "rootChecked", "exfilSuspected"] }),
+        choices: [
+            {
+                label: "Verify backup integrity before you escalate",
+                detail: "The other half of the picture.",
+                effect: { clock: 15 },
+                next: "rw_backups",
+                show: (s) => !s.flags.backupsChecked,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Take the root-cause picture to the war room.",
+                effect: { clock: 6 },
+                next: "rw_warroom",
+            },
+        ],
+    },
+    // ─────────────────────────── ACT 2 - INCIDENT COMMANDER ─────────────────────
+    rw_warroom: {
+        id: "rw_warroom",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sun 00:30",
+        title: "The Bridge",
+        body: [
+            "You are running the incident now. The bridge fills up fast. Raj from Infrastructure wants to start restoring immediately and keeps saying the word uptime. Priya from Legal wants evidence preserved, regulators considered, and absolutely nobody wiring cryptocurrency to anyone tonight. Ellis, the CEO, has done the math on a day of downtime and is already asking, quietly, whether you can just pay them and make it stop.",
+            "The leak site is live. A countdown timer, 72 hours, and a directory listing of folders that look unmistakably like yours. The demand is 2.4 million dollars.",
+        ],
+        onEnter: (s) => {
+            const reveal = ["Vellum leak site is live: 72-hour countdown, demand of $2.4M, double extortion confirmed."];
+            if (!s.flags.backupsChecked)
+                reveal.push("(unconfirmed) Backup integrity not yet verified. You are flying blind on recovery options.");
+            return { dataExposure: 4, set: ["exfilConfirmed"], intel: reveal };
+        },
+        choices: [
+            {
+                label: "Engage a specialist ransomware IR firm and notify law enforcement",
+                detail: "Bring in people who do this every week. Slower to start, far stronger footing.",
+                effect: { clock: 60, caseStrength: 12, dataExposure: -4, set: ["irFirmEngaged", "lawEnforcement", "persistenceFound"], trust: { legal: 12, exec: -6 }, intel: ["A ransomware IR firm is retained and the FBI field office is notified. The firm immediately finds two persistence mechanisms you would have missed."] },
+                next: "rw_recovery_plan",
+            },
+            {
+                label: "Drive an in-house recovery now: restore from backups",
+                detail: "Move fast with your own team. Depends entirely on the backups.",
+                effect: { clock: 30, trust: { eng: 8 } },
+                next: "rw_restore",
+            },
+            {
+                label: "Open a negotiation channel with the attacker to buy time",
+                detail: "Stall the countdown and learn what they really have. Signals you might pay.",
+                effect: { clock: 40, set: ["negotiationOpened"], trust: { legal: -6 }, intel: ["A negotiator opens a channel. The attacker drops a sample of stolen files to prove the theft is real. The countdown pauses while you talk."] },
+                next: "rw_negotiate",
+            },
+        ],
+    },
+    rw_ir_firm: {
+        id: "rw_ir_firm",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sun 02:00",
+        title: "Professionals",
+        body: [
+            "The firm moves with the calm of people who have seen this exact movie a hundred times. They confirm the exfiltration, map the attacker's footholds, and give you something you did not have an hour ago: a defensible plan with a sequence.",
+            "Eradicate first. Rebuild the identity layer. Restore from known-good media only after the attacker is provably gone. Do not, under any circumstances, let Raj plug the old domain controllers back in to save time.",
+        ],
+        intelReveal: ["IR firm confirmed scope and persistence. A staged eradicate-then-restore plan is on the table."],
+        onEnter: () => ({ caseStrength: 8, set: ["persistenceFound", "exfilConfirmed"] }),
+        choices: [
+            {
+                label: "Follow the plan: eradicate, rebuild, then restore",
+                detail: "The disciplined path. Move to the recovery decision.",
+                effect: { clock: 30 },
+                next: "rw_recovery_plan",
+            },
+        ],
+    },
+    rw_negotiate: {
+        id: "rw_negotiate",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sun 03:00",
+        title: "Talking to the Enemy",
+        body: [
+            "The negotiation buys real time and a little intelligence. The attacker is professional, almost bored, and clearly running a business. They confirm the data, they hold to the number, and they offer a decryptor demo on a single file to prove it works.",
+            "Time bought is only useful if you spend it. The question is on what.",
+        ],
+        choices: [
+            {
+                label: "Use the time to bring in an IR firm and recover properly",
+                detail: "Convert the stall into a real recovery.",
+                effect: { clock: 30, caseStrength: 8, set: ["irFirmEngaged", "lawEnforcement", "persistenceFound"], trust: { legal: 8, exec: -4 } },
+                next: "rw_recovery_plan",
+            },
+            {
+                label: "Move toward the ransom decision",
+                detail: "Treat payment as the primary path out.",
+                effect: { clock: 20 },
+                next: "rw_ransom_decision",
+            },
+        ],
+    },
+    rw_restore: {
+        id: "rw_restore",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sun 01:30",
+        title: "Recovery, In-House",
+        body: [
+            "Your team is fast and they want to fight. The plan depends entirely on what the backups look like, and on whether you are willing to slow down enough to do it safely.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.backupsHit) {
+                return { intel: ["Recovery blocked: the backups are encrypted. There is nothing clean to restore from in-house."] };
+            }
+            if (s.flags.backupsIntact) {
+                return { intel: ["The immutable backups are good. The only question now is whether you restore safely or quickly."] };
+            }
+            // Backups never checked: discover state now.
+            return { dataExposure: 4, set: ["backupsHit", "backupsChecked"], intel: ["You only now check the backups, mid-restore: they were reachable and are encrypted. That hour cost you."] };
+        },
+        choices: [
+            {
+                label: "Eradicate persistence first, then restore clean",
+                detail: "The safe sequence. Slower to value, no second detonation.",
+                effect: { clock: 40, set: ["eradicateFirst"] },
+                next: "rw_recovery_plan",
+                show: (s) => !s.flags.backupsHit,
+            },
+            {
+                label: "Restore fast from backups to cut the downtime",
+                detail: "Get the business back now. Risky if the attacker is still inside.",
+                effect: { clock: 20, set: ["prematureRestoreAttempt"], trust: { eng: 6 } },
+                next: (s) => s.flags.backupsHit
+                    ? "rw_no_backups"
+                    : s.flags.rootCauseFound || s.flags.persistenceFound
+                        ? "rw_recovery_plan"
+                        : "rw_reinfection",
+                show: (s) => !s.flags.backupsHit,
+            },
+            {
+                label: "Accept you cannot restore cleanly and weigh the ransom",
+                detail: "The hard pivot toward payment.",
+                effect: { clock: 10 },
+                next: "rw_no_backups",
+                show: (s) => !!s.flags.backupsHit,
+            },
+            {
+                label: "Pivot to rebuild-from-scratch, no payment",
+                detail: "Backups are gone. Ride out a long rebuild.",
+                effect: { clock: 10 },
+                next: "rw_no_backups",
+                show: (s) => !!s.flags.backupsHit,
+            },
+        ],
+    },
+    rw_recovery_plan: {
+        id: "rw_recovery_plan",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sun 04:30",
+        title: "Eradicate or Hurry",
+        body: [
+            "You have a path to recovery. What you do not have is unlimited patience around you. Every hour of downtime is a number Ellis can see, and Raj is desperate to start plugging things back in.",
+            "The discipline question is the whole ballgame in a ransomware case. Restore before you have evicted the attacker and you simply hand them a second detonation. Take too long and the business bleeds out while you are being careful.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.persistenceFound || s.flags.rootCauseFound) {
+                return { intel: ["You know where the attacker's footholds are. A clean eradication is achievable."] };
+            }
+            return { intel: ["(unconfirmed) You have not fully mapped the attacker's persistence. Restoring now is a gamble."] };
+        },
+        choices: [
+            {
+                label: "Eradicate persistence, rebuild the identity layer, then restore",
+                detail: "The textbook sequence. Costs hours, buys a clean environment.",
+                effect: { clock: 90, caseStrength: 15, dataExposure: -20, set: ["rebuiltClean", "restoredClean", "rootCauseFixed"], trust: { eng: -4, legal: 8, exec: -4 }, intel: ["Persistence evicted, identity layer rebuilt, MFA enforced on the VPN, systems restored from clean media. The environment is yours again."] },
+                next: "rw_disclosure",
+                show: (s) => !s.flags.backupsHit,
+            },
+            {
+                label: "Prioritize speed: restore now, harden afterward",
+                detail: "Cut the downtime. Dangerous if eradication is incomplete.",
+                effect: { clock: 25, trust: { eng: 8, exec: 6 } },
+                next: (s) => s.flags.persistenceFound || s.flags.rootCauseFound ? "rw_disclosure_fast" : "rw_reinfection",
+                show: (s) => !s.flags.backupsHit,
+            },
+            {
+                label: "Backups are gone; escalate to the ransom decision",
+                detail: "Without clean media, payment is back on the table.",
+                effect: { clock: 10 },
+                next: "rw_ransom_decision",
+                show: (s) => !!s.flags.backupsHit,
+            },
+        ],
+    },
+    // A "fast but lucky" restore: eradication happened to be adequate.
+    rw_disclosure_fast: {
+        id: "rw_disclosure_fast",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sun 06:00",
+        title: "Back, and Holding",
+        body: [
+            "You pushed the restore hard and, because you actually knew where the footholds were, it held. Systems come back through the morning. It is not elegant, and you will be hardening for weeks, but the lights are on and the attacker is out.",
+        ],
+        onEnter: () => ({ caseStrength: 8, dataExposure: -14, set: ["restoredClean", "rootCauseFixed"] }),
+        choices: [
+            {
+                label: "Move to the disclosure decision as CISO",
+                detail: "Systems are back. The data question remains.",
+                effect: { clock: 20 },
+                next: "rw_disclosure",
+            },
+        ],
+    },
+    rw_no_backups: {
+        id: "rw_no_backups",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sun 05:00",
+        title: "No Clean Media",
+        body: [
+            "There is no clean copy to restore from. That sentence reframes the entire incident. Your options narrow to two ugly ones: rebuild everything from bare metal and source, which means days to weeks of degraded operations, or buy a decryptor from the people who did this to you.",
+            "Raj has gone quiet. Ellis has not.",
+        ],
+        intelReveal: ["No viable backups. Recovery is now a choice between a long rebuild and paying the ransom."],
+        choices: [
+            {
+                label: "Commit to a full rebuild, no payment, ride out the downtime",
+                detail: "Principled and brutal. Days of disruption, no money to criminals.",
+                effect: { clock: 60, caseStrength: 6, dataExposure: 22, set: ["refusedPay", "longRebuild"], trust: { exec: -10, eng: -6 }, intel: ["The decision is made: no payment, full rebuild. Operations will run degraded for days. The finance team starts modeling the cost."] },
+                next: "rw_disclosure",
+            },
+            {
+                label: "Authorize moving toward payment for the decryptor",
+                detail: "Treat the ransom as the least-bad path back.",
+                effect: { clock: 15 },
+                next: "rw_ransom_decision",
+            },
+        ],
+    },
+    rw_reinfection: {
+        id: "rw_reinfection",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sun 07:20",
+        title: "Again",
+        body: [
+            "You restored before you evicted them. For about ninety minutes, it looks like a triumph. Systems are green, Raj is grinning, Ellis sends a thumbs up.",
+            "Then the second detonation hits the freshly restored environment, using the same domain admin token nobody revoked. This time it takes the restored systems and the morale of everyone who spent the night bringing them back. You are now further behind than when you started.",
+        ],
+        intelReveal: ["REINFECTION: the attacker re-encrypted the restored environment using persistence that was never removed."],
+        onEnter: () => ({ caseStrength: -15, dataExposure: 28, set: ["reinfected"], trust: { eng: -12, exec: -14 } }),
+        choices: [
+            {
+                label: "Take the wreckage to the executive table and decide what is left",
+                detail: "There is no good option now. Move to the fallout.",
+                effect: { clock: 30 },
+                next: "rw_disclosure",
+            },
+        ],
+    },
+    // ──────────────────────────────── ACT 3 - CISO ──────────────────────────────
+    rw_ransom_decision: {
+        id: "rw_ransom_decision",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Sun, exec floor",
+        title: "Pay or Don't",
+        body: [
+            "It comes down to the question everyone hoped to avoid. Two point four million dollars for a decryptor and a promise to delete stolen data, from people whose entire business model is breaking promises.",
+            "Legal raises the thing that turns a bad decision into an illegal one: if Vellum is affiliated with a sanctioned entity, paying them can itself be a violation that lands on you and the company. There is a process for checking. It takes a little time and a specialist who knows how to run it.",
+        ],
+        onEnter: () => ({ intel: ["Sanctions exposure: paying a sanctioned group is itself a legal violation. An OFAC check before payment is the difference between a hard call and a crime."] }),
+        choices: [
+            {
+                label: "Pay via the IR firm after an OFAC sanctions check and counsel sign-off",
+                detail: "If you must pay, pay lawfully and through professionals.",
+                effect: { clock: 50, caseStrength: 6, dataExposure: -16, set: ["paidRansom", "ofacChecked"], trust: { legal: 4, exec: 6 }, intel: ["Sanctions check cleared, counsel signed off, payment routed through the IR firm's process. A working decryptor arrives. Recovery begins."] },
+                next: "rw_disclosure",
+            },
+            {
+                label: "Pay immediately to end the crisis",
+                detail: "Wire it now. Worry about the paperwork later.",
+                effect: { clock: 15, dataExposure: -12, set: ["paidRansom", "ofacRisk", "recklessPay"], trust: { legal: -15, exec: 8 }, intel: ["Payment sent within the hour, no sanctions check. A decryptor arrives. So, potentially, does an OFAC problem."] },
+                next: "rw_disclosure",
+            },
+            {
+                label: "Refuse to pay; commit to rebuild and ride it out",
+                detail: "No money to criminals. Accept the pain.",
+                effect: { clock: 40, dataExposure: 14, set: ["refusedPay"], trust: { legal: 6, exec: -8 }, intel: ["The board signs off on a no-payment stance. The rebuild becomes the only road home."] },
+                next: "rw_disclosure",
+            },
+        ],
+    },
+    rw_disclosure: {
+        id: "rw_disclosure",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Mon, exec floor",
+        title: "What You Tell the World",
+        body: [
+            "The technical incident is converging on an ending, one way or another. The reputational and legal one is just beginning. Vellum exfiltrated data, and a leak site with your name on it does not care how your recovery went.",
+            "How you talk about the data theft now will outlive every other decision you made this weekend.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.reinfected) {
+                return { intel: ["FINAL REPORT: a second detonation set recovery back to zero. The board is asking how this was allowed to happen twice."] };
+            }
+            if (s.flags.paidRansom) {
+                return { intel: [`FINAL REPORT: decryptor obtained via payment${s.flags.ofacChecked ? " (sanctions-cleared)" : " (no sanctions check performed)"}. The attacker's deletion promise is, as always, unverifiable.`] };
+            }
+            if (s.flags.rebuiltClean || s.flags.restoredClean) {
+                return { intel: ["FINAL REPORT: environment recovered from clean media without payment. Root cause closed. The exfiltrated data, however, is still in their hands."] };
+            }
+            return { intel: ["FINAL REPORT: recovery is grinding along the hard way. The exfiltrated data remains in the attacker's hands regardless of systems status."] };
+        },
+        choices: [
+            {
+                label: "Proactively notify affected customers and regulators about the data theft",
+                detail: "Get ahead of the leak. Transparent, costly, defensible.",
+                effect: { clock: 30, set: ["disclosedProperly"], trust: { legal: 10, exec: -6 } },
+                next: (s) => resolveRwEnding(s, "proactive"),
+            },
+            {
+                label: "Disclose the legal minimum, quietly, on the latest allowable timeline",
+                detail: "Limit the noise. Legal's nervous compromise.",
+                effect: { clock: 20, trust: { exec: 6, legal: -2 } },
+                next: (s) => resolveRwEnding(s, "minimal"),
+            },
+            {
+                label: "Frame it as an outage; do not mention the data theft",
+                detail: "Say nothing about exfiltration. A bet that the leak site is bluffing.",
+                effect: { clock: 10, trust: { exec: 8, legal: -12 } },
+                next: (s) => resolveRwEnding(s, "none"),
+            },
+        ],
+    },
+    // ──────────────────────────────── ENDINGS ───────────────────────────────────
+    ending_rw_textbook: {
+        id: "ending_rw_textbook",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Clean Recovery",
+        isEnding: true,
+        endingTitle: "Outcome: Recovered Clean, Paid Nothing",
+        endingTone: "win",
+        body: [
+            "You contained before the backups died, you found the way in before you tried to come back, you evicted the attacker before you restored, and you closed the door they walked through. No cryptocurrency left the building.",
+            "The data theft is still real and you told customers about it like an adult, which is why the story is a company that handled a crisis rather than a company that got caught hiding one. The leak site publishes its files to an audience that already knew.",
+            "Ransomware is graded on a curve, and this is the top of it. You did not win so much as refuse to lose in any of the dozen available ways.",
+        ],
+    },
+    ending_rw_paid_clean: {
+        id: "ending_rw_paid_clean",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Paid, Lawfully",
+        isEnding: true,
+        endingTitle: "Outcome: You Paid, and Did It Right",
+        endingTone: "mixed",
+        body: [
+            "The backups were gone and the math was brutal, so you paid. But you paid the way a defensible organization pays: through professionals, after a sanctions check, with counsel's signature on the file. The decryptor worked and the business came back.",
+            "Nobody is proud of funding a criminal enterprise, and you will spend budget cycles making sure the next time there is a clean backup so this choice is never forced again. But you turned an extinction event into an expensive, survivable, legal one.",
+            "Not a victory. A controlled loss, which in this category is its own kind of competence.",
+        ],
+    },
+    ending_rw_ofac: {
+        id: "ending_rw_ofac",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "The Second Crime",
+        isEnding: true,
+        endingTitle: "Outcome: You Paid a Sanctioned Group",
+        endingTone: "loss",
+        body: [
+            "In the panic, you wired the money without checking who you were wiring it to. The decryptor worked, which felt like relief for about a week, until counsel established that Vellum's wallet cluster traces to a sanctioned entity.",
+            "Now the ransomware is the smaller of your two problems. The company self-reports to regulators, retains outside counsel that costs more than the ransom did, and learns that the law does not grade panic on a curve. The phrase strict liability appears in a memo, and not in your favor.",
+            "You recovered the systems and acquired a federal investigation. A bad trade.",
+        ],
+    },
+    ending_rw_outage: {
+        id: "ending_rw_outage",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "The Long Dark",
+        isEnding: true,
+        endingTitle: "Outcome: Principled, and Down for Weeks",
+        endingTone: "loss",
+        body: [
+            "You refused to pay, which is the right answer to the wrong question, because you had nothing clean to rebuild from. The principle cost you eleven days of degraded operations, a quarter of bookings, and two enterprise customers who could not wait for you to come back.",
+            "History will record that you did not fund criminals, and that is genuinely worth something. It will also record that the backup strategy which made this the only option was a known gap that never made it to the top of anyone's list.",
+            "The ransom was a symptom. The real failure was older and quieter and sitting in a risk register marked low priority.",
+        ],
+    },
+    ending_rw_reinfection: {
+        id: "ending_rw_reinfection",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Twice",
+        isEnding: true,
+        endingTitle: "Outcome: You Restored Into a Second Detonation",
+        endingTone: "loss",
+        body: [
+            "Speed was the enemy and you sided with it. Bringing systems back before the attacker was evicted did not save time, it donated a fully restored environment for them to encrypt again, with credentials you never rotated.",
+            "The second hit is worse than the first, not technically but organizationally. The team that worked through the night to recover watched it evaporate, and that is a wound that does not heal by Monday. Eradication is not the boring step before recovery. It is the recovery.",
+            "You learned the most important rule in ransomware the most expensive way there is.",
+        ],
+    },
+    ending_rw_leak: {
+        id: "ending_rw_leak",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Page One, Again",
+        isEnding: true,
+        endingTitle: "Outcome: The Cover-Up Became the Story",
+        endingTone: "loss",
+        body: [
+            "You decided to call it an outage and bet that the leak site was bluffing. It was not. When the countdown hit zero, six hundred gigabytes of customer data went public, and your earlier statement that this was merely a service disruption went from optimistic to fraudulent in the eyes of every regulator reading it.",
+            "The encryption was survivable. The exfiltration was survivable. The decision to look your customers in the eye and omit the part where their data was stolen is the one that ends up in the consent decree.",
+            "Attackers take your data once. Choosing to hide it hands them the narrative for free.",
+        ],
+    },
+    ending_rw_messy: {
+        id: "ending_rw_messy",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Survived",
+        isEnding: true,
+        endingTitle: "Outcome: Survived, the Hard Way",
+        endingTone: "mixed",
+        body: [
+            "You came out the other side. Systems are back, the company is operating, and the worst-case headlines did not materialize. The path here was rougher than it needed to be, with trust spent and corners visible in the rear-view mirror, but rough and survived beats clean and theoretical.",
+            "The after-action will be long and the runbooks will change. A few decisions this weekend will be taught as what-not-to-do and a few as exactly-right, and honestly that mix is what most real incidents produce.",
+            "Not the story you would script. Still a company that is open on Monday.",
+        ],
+    },
+};
+// Resolve the ransomware ending from final state and the disclosure choice.
+function resolveRwEnding(s, disclosure) {
+    // Reinfection dominates everything.
+    if (s.flags.reinfected)
+        return "ending_rw_reinfection";
+    // Reckless payment to a possibly-sanctioned group.
+    if (s.flags.paidRansom && s.flags.ofacRisk)
+        return "ending_rw_ofac";
+    // Concealing a confirmed data theft: it leaks and the lie becomes the story.
+    if (disclosure === "none" && s.flags.exfilConfirmed) {
+        s.flags.concealed = true;
+        s.flags.leaked = true;
+        return "ending_rw_leak";
+    }
+    // Paid lawfully and recovered.
+    if (s.flags.paidRansom && s.flags.ofacChecked) {
+        return disclosure !== "none" && avgOk(s) ? "ending_rw_paid_clean" : "ending_rw_messy";
+    }
+    // Refused to pay with no clean media: prolonged outage.
+    if (s.flags.refusedPay && s.flags.backupsHit && !(s.flags.rebuiltClean || s.flags.restoredClean)) {
+        return "ending_rw_outage";
+    }
+    // Clean recovery without payment.
+    if ((s.flags.rebuiltClean || s.flags.restoredClean) &&
+        s.flags.rootCauseFixed &&
+        disclosure !== "none" &&
+        s.dataExposure < 50 &&
+        avgOk(s)) {
+        return "ending_rw_textbook";
+    }
+    return "ending_rw_messy";
+}
+function scoreAdjust(s) {
+    let delta = 0;
+    const wins = [];
+    const losses = [];
+    const avg = (s.trust.legal + s.trust.eng + s.trust.exec) / 3;
+    if (s.flags.rootCauseFixed)
+        delta += 8;
+    if (s.flags.backupsIntact)
+        delta += 6;
+    if (s.flags.rebuiltClean || s.flags.restoredClean)
+        delta += 6;
+    if (s.flags.irFirmEngaged)
+        delta += 4;
+    if (s.flags.lawEnforcement)
+        delta += 3;
+    if (s.flags.disclosedProperly)
+        delta += 5;
+    if (s.flags.paidRansom && s.flags.ofacChecked)
+        delta += 2;
+    if (s.flags.reinfected)
+        delta -= 14;
+    if (s.flags.ofacRisk)
+        delta -= 14;
+    if (s.flags.concealed)
+        delta -= 12;
+    if (s.flags.leaked)
+        delta -= 8;
+    if (s.flags.paidRansom)
+        delta -= 4;
+    if (s.flags.refusedPay && s.flags.backupsHit && !(s.flags.rebuiltClean || s.flags.restoredClean))
+        delta -= 8;
+    if (s.flags.backupsIntact)
+        wins.push("You contained fast enough to keep your immutable backups, which gave you every other option.");
+    if (s.flags.rootCauseFixed)
+        wins.push("You found and closed the root cause, so recovery did not just reset the clock for the next attack.");
+    if (s.flags.rebuiltClean || s.flags.restoredClean)
+        wins.push("You recovered to a known-clean state instead of restoring the attacker along with the data.");
+    if (s.flags.irFirmEngaged)
+        wins.push("You brought in specialists and law enforcement instead of improvising a category of incident you rarely see.");
+    if (s.flags.disclosedProperly)
+        wins.push("You disclosed the data theft proactively, keeping the story about the attacker and not about a cover-up.");
+    if (s.flags.paidRansom && s.flags.ofacChecked)
+        wins.push("If you had to pay, you paid lawfully: sanctions-checked and through counsel.");
+    if (s.flags.reinfected)
+        losses.push("You restored before eradicating, and the attacker re-encrypted the recovered environment.");
+    if (s.flags.ofacRisk)
+        losses.push("You paid without a sanctions check, exposing the company to OFAC liability on top of the breach.");
+    if (s.flags.concealed)
+        losses.push("You concealed a confirmed data theft, turning a survivable breach into a credibility crisis.");
+    if (s.flags.backupsHit)
+        losses.push("The backups were encrypted before you contained, which removed your cleanest path home.");
+    if (s.flags.paidRansom)
+        losses.push("You funded a criminal enterprise, with no guarantee the stolen data was ever deleted.");
+    if (avg < 45)
+        losses.push("Stakeholder trust eroded badly during the response. The rebuild of confidence will outlast the rebuild of systems.");
+    return { delta, wins, losses };
+}
+exports.ransomwareScenario = {
+    meta: {
+        id: "ransomware",
+        title: "Blast Radius",
+        codename: "Ransomware",
+        blurb: "Double-extortion ransomware detonates on a Saturday night. Contain it, recover it, and decide whether to pay.",
+        premise: "It is 23:10 on a Saturday and your environment is encrypting itself in real time. A ransomware crew has your data and your file servers, and a 72-hour countdown is already running. You will move from the SOC floor to the war room to the executive table, weighing containment against uptime, eradication against speed, and a ransom against the law. Move fast. Move carefully. Pick which.",
+        difficulty: "Hard",
+        accent: "red",
+        tags: ["Ransomware", "DFIR", "Recovery", "Ransom & OFAC"],
+        acts: 3,
+    },
+    firstScene: "rw_start",
+    initialState: () => ({
+        scene: "rw_start",
+        clock: 0,
+        caseStrength: 15,
+        dataExposure: 30,
+        trust: { legal: 55, eng: 55, exec: 55 },
+        flags: {},
+        intel: [],
+        log: [],
+    }),
+    scenes: SCENES,
+    meterLabels: {
+        primary1: "Containment",
+        primary2: "Business Impact",
+        s1: "Legal / Reg.",
+        s2: "Operations",
+        s3: "Executive",
+    },
+    scoreAdjust,
+};
+
+  return exports.ransomwareScenario;
+})();
+
+const becScenario = (function(){
+  const exports = {}; const module = { exports: exports };
+  const require = function(){ return {}; };
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.becScenario = void 0;
+/**
+ * Scenario: "Pending Wire"
+ * A business email compromise. Three seats:
+ *   Act 1  - SOC Analyst         (the quiet alert)
+ *   Act 2  - Incident Commander  (the recall and the eradication)
+ *   Act 3  - CISO                (the loss, the vendor, the disclosure)
+ *
+ * Ground truth: a threat actor phished a finance manager's M365 credentials and
+ * session token via an adversary-in-the-middle page two weeks ago. They lurked in
+ * the mailbox, built inbox rules to hide their replies, hijacked a real $1.8M
+ * invoice thread, and convinced Accounts Payable to "update the vendor's bank
+ * details." The wire went out this morning. The mailbox is still compromised.
+ * The money has a head start, and so do they.
+ */
+function avgOk(s) {
+    return (s.trust.legal + s.trust.eng + s.trust.exec) / 3 >= 48;
+}
+const SCENES = {
+    // ───────────────────────────── ACT 1 - SOC ANALYST ─────────────────────────
+    bec_start: {
+        id: "bec_start",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Fri 10:40",
+        title: "A Quiet Flag",
+        body: [
+            "No sirens this time. Just a low-priority alert you almost scrolled past: a mailbox rule was auto-created on Dana Okafor's account in Accounts Payable, the kind that silently moves messages from a specific sender into the RSS Subscriptions folder nobody has opened since 2014.",
+            "The same account shows a sign-in from a residential IP two timezones away, eleven minutes before the rule appeared. Then, as you are reading, a message lands from the Finance channel: a $1.8M payment to a key vendor was released this morning, against updated banking details the vendor emailed in on Wednesday.",
+            "It might be nothing. Inbox rules get made. Vendors change banks. But the shape of it makes the back of your neck prickle.",
+        ],
+        intelReveal: [
+            "Auto-created inbox rule on a Finance account, hiding a specific sender into a dead folder.",
+            "(unconfirmed) Atypical sign-in from a residential IP two timezones away.",
+            "(unconfirmed) A $1.8M vendor payment was released this morning to newly updated bank details.",
+        ],
+        choices: [
+            {
+                label: "Treat the wire as fraud and start the bank recall immediately",
+                detail: "The money is the clock. Recovery odds collapse by the hour.",
+                effect: { clock: 10, caseStrength: 8, set: ["recallStarted", "fastRecall"], intel: ["You flag the payment as suspected fraud and tell Finance to call the bank now, before lunch turns into a weekend."] },
+                next: "bec_recall",
+            },
+            {
+                label: "Quietly investigate the mailbox and the login first",
+                detail: "Scope it before you act. The attacker may still be reading.",
+                effect: { clock: 35, set: ["investigatedFirst"], intel: ["You open a quiet investigation into the mailbox, the rule, and the sign-in history."] },
+                next: "bec_investigate",
+            },
+            {
+                label: "Lock down the mailbox now: reset credentials and revoke sessions",
+                detail: "Kick them out first. You will scope the damage after.",
+                effect: { clock: 15, caseStrength: 4, set: ["mailboxLocked", "contained"], trust: { eng: -8 }, intel: ["You force a password reset and revoke active sessions on Dana's account. Dana, mid-invoice, is suddenly locked out and not thrilled."] },
+                next: "bec_lockdown",
+            },
+            {
+                label: "Probably a benign rule; note it and keep monitoring",
+                detail: "Do not cry wolf over a folder rule. Watch and wait.",
+                effect: { clock: 90, set: ["complacent"], intel: ["You log it as low priority and move on. The morning becomes the afternoon."] },
+                next: "bec_complacent",
+            },
+        ],
+    },
+    bec_investigate: {
+        id: "bec_investigate",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Fri 11:20",
+        title: "Two Weeks in the Dark",
+        body: [
+            "The mailbox tells a worse story the longer you read it. The sign-in trail goes back sixteen days, to a single click on a DocuSign lookalike that harvested Dana's password and, critically, her session token. Multi-factor did not help; the attacker rode a live session straight past it.",
+            "They were patient. They read everything. They built three inbox rules to auto-file and mark-as-read any reply from the real vendor, so Dana never saw the genuine emails contradicting the fake ones. Then they slipped into a real invoice thread, changed two sentences and an account number, and let your own process do the rest.",
+            "This is not a spoof. This is a sixteen-day resident who has read every contract, every attachment, and every internal note in a Finance manager's inbox.",
+        ],
+        intelReveal: [
+            "Root cause: adversary-in-the-middle phishing (DocuSign lookalike) stole credentials and a live session token. MFA was bypassed via the stolen session.",
+            "Attacker dwell time: 16 days. Three hide-rules suppressed the real vendor's replies.",
+            "Thread hijack confirmed: a genuine invoice thread was edited to redirect the wire.",
+            "Mailbox data exposure: 16 days of contracts, attachments, and internal correspondence were readable.",
+        ],
+        onEnter: () => ({ caseStrength: 12, set: ["scoped", "foundRules", "aitm", "mailboxDataExposure"] }),
+        choices: [
+            {
+                label: "Start the bank recall now, the money already has a head start",
+                detail: "You scoped first. The wire has had longer to move.",
+                effect: { clock: 12, set: ["recallStarted"] },
+                next: "bec_recall",
+                show: (s) => !s.flags.recallStarted,
+            },
+            {
+                label: "Lock down the mailbox and revoke every session and token",
+                detail: "Evict them before they do it again.",
+                effect: { clock: 18, set: ["mailboxLocked", "contained"], trust: { eng: -4 } },
+                next: "bec_lockdown",
+                show: (s) => !s.flags.mailboxLocked,
+            },
+            {
+                label: "Escalate to the Incident Commander with the full picture",
+                detail: "You know what this is now. Get the response organized.",
+                effect: { clock: 8 },
+                next: "bec_warroom",
+            },
+        ],
+    },
+    bec_recall: {
+        id: "bec_recall",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Fri 11:05",
+        title: "The Golden Hours",
+        body: [
+            "Wire fraud recovery is a race against money mules. The receiving account is a way station; within hours the funds get split, pulled out, and bounced through other accounts until they are gone for good. The bank can freeze what is still sitting there, but only what is still sitting there.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.fastRecall) {
+                return { caseStrength: 8, dataExposure: -20, set: ["fundsFrozen", "recallStarted"], intel: ["GOOD: you moved inside the golden window. The bank places a hold and freezes the bulk of the $1.8M before the mules disperse it. Most of the money is recoverable."] };
+            }
+            return { caseStrength: 4, dataExposure: -6, set: ["recallStarted"], intel: ["MIXED: the recall goes in, but hours have already passed. A chunk has been pulled out and layered away. Recovery will be partial and slow."] };
+        },
+        choices: [
+            {
+                label: "Now scope the mailbox compromise properly",
+                detail: "Find out how deep this goes before you escalate.",
+                effect: { clock: 30, set: ["recallStarted"] },
+                next: "bec_investigate",
+                show: (s) => !s.flags.scoped,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Hand the recall and the investigation up.",
+                effect: { clock: 8 },
+                next: "bec_warroom",
+            },
+        ],
+    },
+    bec_lockdown: {
+        id: "bec_lockdown",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Fri 11:30",
+        title: "Changing the Locks",
+        body: [
+            "You reset the password, revoke the sessions, and re-register MFA. It feels decisive, and it is, as far as it goes.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.scoped || s.flags.foundRules) {
+                return { caseStrength: 8, set: ["eradicated"], intel: ["Because you had already mapped the access, you also remove the three hide-rules and an OAuth grant the attacker added for persistence. The mailbox is genuinely clean."] };
+            }
+            return { set: ["superficialLock"], intel: ["(unconfirmed) You reset the password, but you never mapped what the attacker added. A mailbox rule or an OAuth token could still be granting access. You do not actually know."] };
+        },
+        choices: [
+            {
+                label: "Start the bank recall before the money disperses",
+                detail: "The mailbox is handled. The money is not.",
+                effect: { clock: 12, set: ["recallStarted"] },
+                next: "bec_recall",
+                show: (s) => !s.flags.recallStarted,
+            },
+            {
+                label: "Scope what the attacker actually accessed",
+                detail: "You locked the door. Now find out what they took.",
+                effect: { clock: 25 },
+                next: "bec_investigate",
+                show: (s) => !s.flags.scoped,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Move the response up a level.",
+                effect: { clock: 8 },
+                next: "bec_warroom",
+            },
+        ],
+    },
+    bec_complacent: {
+        id: "bec_complacent",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Fri 15:50",
+        title: "By the Time You Look",
+        body: [
+            "You let it ride. At 15:50 the real vendor calls Accounts Payable directly, confused and increasingly alarmed: they never changed their bank details, they never sent that email, and they are still waiting to be paid for an invoice your records show as settled this morning.",
+            "By the time you pull the thread, the golden hours are gone. The $1.8M has been pulled from the receiving account and layered through three more. And the attacker, still sitting comfortably in Dana's mailbox, has just replied to a second thread.",
+        ],
+        intelReveal: [
+            "The real vendor confirms: no bank change, no email, and no payment received. Confirmed fraud.",
+            "Recall window missed. The funds have been dispersed and layered.",
+            "(unconfirmed) The attacker is still active in the mailbox and moving on a second target.",
+        ],
+        onEnter: () => ({ caseStrength: -8, dataExposure: 18, set: ["recallMissed", "fundsDispersed", "mailboxDataExposure"], trust: { eng: -6 } }),
+        choices: [
+            {
+                label: "Escalate hard to the Incident Commander; you are already behind",
+                detail: "No more solo analyst moves. Get the room.",
+                effect: { clock: 10 },
+                next: "bec_warroom",
+            },
+        ],
+    },
+    // ─────────────────────────── ACT 2 - INCIDENT COMMANDER ─────────────────────
+    bec_warroom: {
+        id: "bec_warroom",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Fri 12:30",
+        title: "The Awkward Room",
+        body: [
+            "This war room is quieter and more uncomfortable than a ransomware bridge. Dana from AP is mortified and defensive in equal measure, repeating that the email came from the vendor's real address and that she followed the process. Marcus, the Finance Director, wants the money back and wants the quarter to survive. Priya from Legal is already thinking about liability, the cyber-insurance policy, and the contract with the vendor. The CEO wants to know how a wire that large left the building on a forged instruction.",
+            "Everyone is looking for a version of this where it was reasonable. There may not be one.",
+        ],
+        onEnter: (s) => {
+            const reveal = [];
+            if (s.flags.fundsFrozen)
+                reveal.push("Recall status: most of the funds are frozen at the bank. Recovery is likely if you keep the pressure on.");
+            else if (s.flags.fundsDispersed || s.flags.recallMissed)
+                reveal.push("Recall status: funds dispersed. Direct recovery is now unlikely; you are into insurance and law enforcement territory.");
+            else if (s.flags.recallStarted)
+                reveal.push("Recall status: partial freeze. Some money is held, some is gone.");
+            else
+                reveal.push("Recall status: no recall has been filed. Every minute of this meeting is money walking out the door.");
+            if (!s.flags.scoped)
+                reveal.push("(unconfirmed) The mailbox has not been fully scoped. You do not yet know if the attacker still has access.");
+            return { set: ["mailboxDataExposure"], intel: reveal };
+        },
+        choices: [
+            {
+                label: "Engage the bank's fraud team, file with the FBI IC3, notify cyber insurance",
+                detail: "The formal recovery track. Slower, far stronger footing.",
+                effect: { clock: 40, caseStrength: 10, set: ["bankFraud", "ic3", "insurerNotified"], trust: { legal: 12, exec: -4 }, intel: ["The bank's fraud unit, the IC3 complaint, and the insurer are all engaged within the hour. The paperwork is real, the timestamps are clean."] },
+                next: "bec_bank_track",
+            },
+            {
+                label: "Keep it quiet to protect the vendor relationship and avoid embarrassment",
+                detail: "Handle it internally. Finance would prefer this. Legal would not.",
+                effect: { clock: 30, caseStrength: -6, set: ["quietHandling"], trust: { eng: 6, legal: -12 }, intel: ["The decision is to keep it small and internal for now. The clock on the insurer's notification window and the IC3 filing keeps ticking, unattended."] },
+                next: "bec_quiet",
+            },
+            {
+                label: "Assume they are still in the mailbox; hunt and eradicate first",
+                detail: "Stop the next fraud before chasing the last one.",
+                effect: { clock: 35, caseStrength: 6, set: ["hunting"], intel: ["You prioritize evicting the attacker over the money, on the theory that a second fraudulent wire is worse than a slow recall."] },
+                next: "bec_eradication",
+            },
+        ],
+    },
+    bec_bank_track: {
+        id: "bec_bank_track",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Fri 14:00",
+        title: "Paper and Process",
+        body: [
+            "The recovery machine grinds into motion. The bank works the receiving institution, the IC3 complaint creates a record that the insurer and law enforcement can act on, and Legal starts the careful work of establishing that the company did everything a reasonable victim does.",
+            "There is an uncomfortable truth under it all: when a company authorizes a wire on a forged instruction, the company usually eats the loss unless it can be recovered or insured. Doing this by the book is the difference between a recoverable loss and a permanent one.",
+        ],
+        intelReveal: ["Liability reality: absent recovery or a valid insurance claim, the paying company generally bears the loss on an authorized-but-fraudulent wire."],
+        choices: [
+            {
+                label: "Now hunt the mailbox for persistence before you close this out",
+                detail: "The money is moving. So might the attacker.",
+                effect: { clock: 30 },
+                next: "bec_eradication",
+                show: (s) => !s.flags.eradicated && !s.flags.hunting,
+            },
+            {
+                label: "Move to the resolution and the loss decision",
+                detail: "The recovery track is running. Time to decide the rest.",
+                effect: { clock: 15 },
+                next: "bec_recovery_decision",
+            },
+        ],
+    },
+    bec_quiet: {
+        id: "bec_quiet",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Fri 15:00",
+        title: "Keeping It Small",
+        body: [
+            "Keeping it quiet has a half-life. The vendor, who was impersonated and is still owed $1.8M, does not consider this a small internal matter. The insurer's policy has a prompt-notification clause that is quietly expiring. And every hour the IC3 complaint goes unfiled is an hour of recovery leverage you will not get back.",
+            "Discretion felt like control. It is starting to feel like delay.",
+        ],
+        intelReveal: ["Insurer notification window is closing. Late notice can become grounds to deny the claim."],
+        onEnter: () => ({ set: ["lateNotice"] }),
+        choices: [
+            {
+                label: "Reverse course: bring in the bank, IC3, and the insurer properly",
+                detail: "Better late than never, though late has a cost.",
+                effect: { clock: 25, caseStrength: 6, set: ["bankFraud", "ic3", "insurerNotified"], trust: { legal: 6 } },
+                next: "bec_bank_track",
+            },
+            {
+                label: "Just pay the vendor again and make the whole thing disappear",
+                detail: "Eat the loss, protect the relationship, tell no one.",
+                effect: { clock: 20, dataExposure: 6, set: ["doublePaid"], trust: { eng: 4, legal: -8 }, intel: ["The vendor is paid a second time, correctly. The company is out $1.8M and has learned, officially, nothing."] },
+                next: "bec_recovery_decision",
+            },
+            {
+                label: "At least hunt the mailbox so it does not happen twice",
+                detail: "Salvage some rigor from the quiet approach.",
+                effect: { clock: 25, set: ["hunting"] },
+                next: "bec_eradication",
+            },
+        ],
+    },
+    bec_eradication: {
+        id: "bec_eradication",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Fri 16:00",
+        title: "Are They Still Here?",
+        body: [
+            "The question that decides whether this is one incident or two: is the attacker still in the environment? A password reset is not eviction if you never found what they planted. BEC actors leave inbox rules, mail-forwarding, and OAuth application grants precisely so that a panicked reset leaves a door open.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.scoped || s.flags.foundRules) {
+                return { caseStrength: 10, set: ["eradicated"], intel: ["You map it properly: three hide-rules, a hidden forwarding rule, and a malicious OAuth grant with mailbox permissions. All revoked. The attacker is out."] };
+            }
+            return { set: ["persistenceRemained"], intel: ["BAD: you reset credentials but never fully mapped the access. A consent-granted OAuth application is still reading the mailbox, and you do not know it yet."] };
+        },
+        choices: [
+            {
+                label: "Lock it all down and mandate out-of-band callback verification for bank changes",
+                detail: "Fix the access and the process hole that let it happen.",
+                effect: { clock: 30, caseStrength: 8, set: ["rootCauseFixed"], trust: { legal: 6, eng: 4 }, intel: ["Phishing-resistant MFA is pushed to Finance, conditional access tightened, and a mandatory call-back-on-a-known-number policy is set for any banking change. Going forward, this specific trick stops working."] },
+                next: (s) => (s.flags.persistenceRemained ? "bec_second_wire" : s.flags.bankFraud ? "bec_recovery_decision" : "bec_bank_track"),
+            },
+            {
+                label: "Declare it contained and move to resolution",
+                detail: "You have done enough. Probably.",
+                effect: { clock: 10 },
+                next: (s) => (s.flags.persistenceRemained ? "bec_second_wire" : "bec_recovery_decision"),
+            },
+        ],
+    },
+    bec_second_wire: {
+        id: "bec_second_wire",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Mon 09:15",
+        title: "Again, Differently",
+        body: [
+            "You thought you were writing the after-action report. Instead, Monday morning, the still-resident attacker uses their surviving access to hijack a second thread, this time a payroll file, and reroutes the entire bi-weekly run to a set of mule accounts. Because the access was never actually removed, nothing flagged it as anomalous. It came from inside.",
+            "The first fraud was a wire you could chase. The second is two hundred employees whose pay went to criminals, and a board that now wants to know why eviction was declared on Friday and disproven on Monday.",
+        ],
+        intelReveal: ["SECOND FRAUD: the un-evicted attacker diverted the payroll run. The loss and the blast radius both just multiplied."],
+        onEnter: () => ({ caseStrength: -14, dataExposure: 26, set: ["secondFraud"], trust: { eng: -12, exec: -14 } }),
+        choices: [
+            {
+                label: "Take the compounded mess to the executive table",
+                detail: "There is no clean version of this now.",
+                effect: { clock: 30 },
+                next: "bec_recovery_decision",
+            },
+        ],
+    },
+    // ──────────────────────────────── ACT 3 - CISO ──────────────────────────────
+    bec_recovery_decision: {
+        id: "bec_recovery_decision",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution week",
+        title: "Who Eats It",
+        body: [
+            "The technical incident is closing. The financial and relationship one is the part that lands on your desk. There is a real vendor who was impersonated and is still owed money, an insurer waiting to see whether you behaved like a careful victim, and a number on a spreadsheet that someone has to absorb.",
+            "How you handle the loss now sets the tone for everything that follows.",
+        ],
+        onEnter: (s) => {
+            const reveal = [];
+            if (s.flags.fundsFrozen)
+                reveal.push("FINAL: the frozen funds are released back to the company. The direct loss is small.");
+            else if (s.flags.bankFraud && s.flags.ic3)
+                reveal.push("FINAL: direct recovery is partial; the insurance claim and law-enforcement track are your path to whole.");
+            else
+                reveal.push("FINAL: little to no direct recovery. The loss is real and largely on the company's books.");
+            return { intel: reveal };
+        },
+        choices: [
+            {
+                label: "Full transparency: pursue recovery, file the claim correctly, own it with the vendor",
+                detail: "The defensible path. Make the vendor whole, let the process work.",
+                effect: { clock: 30, caseStrength: 8, set: ["transparent", "insuranceClaim"], trust: { legal: 10, exec: 2 }, intel: ["You pay the genuine vendor on a verified account, file the insurance claim cleanly, and keep law enforcement in the loop. Expensive, honest, defensible."] },
+                next: "bec_disclosure",
+            },
+            {
+                label: "Eat the loss quietly, pay the vendor again, tell as few people as possible",
+                detail: "Make it disappear. No claim, no noise, no lessons.",
+                effect: { clock: 20, dataExposure: 6, set: ["doublePaid", "quietLoss"], trust: { eng: 4, legal: -6 }, intel: ["The vendor is quietly paid again. No insurance claim is filed. The loss is absorbed and the incident is, officially, not one."] },
+                next: "bec_disclosure",
+            },
+            {
+                label: "Dispute the loss; push liability onto the vendor and the bank, lawyer up",
+                detail: "Fight it. Maybe the vendor's domain was the weak link, not yours.",
+                effect: { clock: 30, caseStrength: -4, set: ["vendorWar"], trust: { legal: -4, exec: 6 }, intel: ["Outside counsel sends letters. The theory that the vendor should share the loss is arguable, and pursuing it turns a supplier into an adversary."] },
+                next: "bec_disclosure",
+            },
+        ],
+    },
+    bec_disclosure: {
+        id: "bec_disclosure",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution week",
+        title: "What the Mailbox Knew",
+        body: [
+            "There is a second exposure under the financial one, and it is easy to ignore because no number is attached to it yet. The attacker did not just send one email. They read a Finance manager's mailbox for sixteen days: contracts, attachments, banking details for other vendors, and whatever personal and customer information passes through Accounts Payable in two weeks.",
+            "That is a data breach regardless of whether the wire is recovered, and it comes with its own notification obligations and its own way of becoming public on someone else's timeline.",
+        ],
+        onEnter: () => ({ intel: ["The compromised mailbox held regulated data. Disclosure obligations attach to the access itself, not just to the fraud."] }),
+        choices: [
+            {
+                label: "Notify the affected parties and regulators about the mailbox compromise",
+                detail: "Treat the access as the breach it is. Transparent and defensible.",
+                effect: { clock: 30, set: ["disclosedProperly"], trust: { legal: 10, exec: -6 } },
+                next: (s) => resolveBecEnding(s, "proactive"),
+            },
+            {
+                label: "Disclose the minimum the lawyers say is strictly required",
+                detail: "Narrow and quiet. Legal's cautious compromise.",
+                effect: { clock: 20, trust: { exec: 6, legal: -2 } },
+                next: (s) => resolveBecEnding(s, "minimal"),
+            },
+            {
+                label: "Call it a financial matter only; say nothing about the mailbox access",
+                detail: "Treat it as fraud, not a breach. Hope the access stays quiet.",
+                effect: { clock: 10, trust: { exec: 8, legal: -12 } },
+                next: (s) => resolveBecEnding(s, "none"),
+            },
+        ],
+    },
+    // ──────────────────────────────── ENDINGS ───────────────────────────────────
+    ending_bec_clean: {
+        id: "ending_bec_clean",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Caught in Time",
+        isEnding: true,
+        endingTitle: "Outcome: Frozen, Evicted, and Closed Properly",
+        endingTone: "win",
+        body: [
+            "You treated the money as the clock and the mailbox as the wound, and you were right on both. The recall froze the bulk of the wire before the mules could move it, you mapped and evicted the attacker instead of just resetting a password, and you closed the process hole that made a forged banking change look routine.",
+            "The mailbox compromise was real and you disclosed it like the breach it was, so the story is a company that caught a sophisticated fraud rather than one that quietly paid for it twice. The vendor relationship survives because you were straight with them.",
+            "BEC is won in the first two hours and the eviction nobody sees. You won both.",
+        ],
+    },
+    ending_bec_recovered_insurance: {
+        id: "ending_bec_recovered_insurance",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Whole, the Slow Way",
+        isEnding: true,
+        endingTitle: "Outcome: Recovered Through Process",
+        endingTone: "mixed",
+        body: [
+            "The money had a head start and some of it got away clean, but you did the unglamorous things in the right order: the bank fraud unit, the IC3 complaint, the insurer notified inside the window, the careful record that you behaved like a diligent victim. Between partial recovery and a valid claim, the company comes out close to whole.",
+            "It cost weeks of paperwork and a hard conversation with the board about why a banking change never got a phone call. But nobody had to absorb a seven-figure hole, and the controls that go in now make this specific movie hard to remake.",
+            "Not the clean catch. The competent recovery, which in fraud is most of the win.",
+        ],
+    },
+    ending_bec_second_fraud: {
+        id: "ending_bec_second_fraud",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Declared Too Soon",
+        isEnding: true,
+        endingTitle: "Outcome: You Reset the Password, Not the Problem",
+        endingTone: "loss",
+        body: [
+            "You called it contained when you had only changed a password. The attacker's real foothold, a consent-granted application quietly reading the mailbox, survived the reset and waited. On Monday it rerouted the payroll run, and because the access was legitimate in the system's eyes, nothing flagged it.",
+            "Eviction in a mailbox compromise is not the password. It is the rules, the forwarding, and above all the OAuth grants, the persistence that a reset does not touch. You learned that the way it is usually learned: from the second incident, which is always worse than the first.",
+            "One fraud is a bad Friday. Two from the same access is a finding with your name on it.",
+        ],
+    },
+    ending_bec_insurance_denied: {
+        id: "ending_bec_insurance_denied",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "The Fine Print Wins",
+        isEnding: true,
+        endingTitle: "Outcome: The Claim Was Denied",
+        endingTone: "loss",
+        body: [
+            "You had cyber insurance that would have covered most of this. You also had a prompt-notification clause, and by the time the company stopped trying to handle it quietly and actually filed, that clause had teeth. The insurer denied the claim on late notice, and a recoverable loss became a real one.",
+            "The fraud was survivable. The instinct to keep it small until it was certain, which felt prudent in the moment, is precisely what converted an insured event into an uninsured write-off. Insurance policies do not reward discretion. They reward the phone call you did not want to make yet.",
+            "The money was always going to be tight. The policy was supposed to be the backstop. The delay removed it.",
+        ],
+    },
+    ending_bec_vendor_war: {
+        id: "ending_bec_vendor_war",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "A Supplier, Lost",
+        isEnding: true,
+        endingTitle: "Outcome: You Sued Your Way to a Smaller Company",
+        endingTone: "loss",
+        body: [
+            "You decided the loss should be someone else's and pointed the lawyers at the vendor. The theory was arguable and the letters were sharp, and somewhere in the discovery process the relationship with a supplier you actually depend on quietly died. They were also a victim. Now they are a former partner with a grievance and a deposition.",
+            "Maybe you shift a fraction of the loss. You also spend more than that fraction on counsel, lose a vendor it took years to qualify, and teach your other suppliers exactly how you treat partners on a bad day. The money was the small problem.",
+            "There was a version where they stayed a vendor. You chose the version where they became an opponent.",
+        ],
+    },
+    ending_bec_breach_undisclosed: {
+        id: "ending_bec_breach_undisclosed",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "The Quiet Part, Later",
+        isEnding: true,
+        endingTitle: "Outcome: You Called a Breach a Fraud",
+        endingTone: "loss",
+        body: [
+            "You treated it as a money problem and never acknowledged the part where an attacker read a Finance mailbox for sixteen days. The money got resolved one way or another. The decision to stay silent about the data access did not.",
+            "Months later it surfaces the way these always do, through a regulator's question or a partner whose own breach traces back to information that sat in that mailbox. The notification you chose not to send becomes the omission you have to explain, and explaining a delay is always worse than the disclosure would have been.",
+            "The fraud cost money. Pretending the breach was only a fraud cost something slower and more expensive: the benefit of the doubt.",
+        ],
+    },
+    ending_bec_messy: {
+        id: "ending_bec_messy",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Absorbed",
+        isEnding: true,
+        endingTitle: "Outcome: Survived, and Out of Pocket",
+        endingTone: "mixed",
+        body: [
+            "It is over, more or less. The attacker is out, the vendor is paid, the business goes on. Somewhere in the middle of it the company absorbed a loss it did not fully chase and learned lessons it half-wrote down. Not a disaster, not a save, just an expensive Friday that became an expensive month.",
+            "The after-action will note the things that went right and the recall that went in a little late, the eviction that was a little incomplete, the claim that was a little under-supported. None of it fatal. All of it avoidable next time, which is what the next time is for.",
+            "You did not lose. You paid tuition.",
+        ],
+    },
+};
+function resolveBecEnding(s, disclosure) {
+    // A second fraud from un-evicted access dominates.
+    if (s.flags.secondFraud)
+        return "ending_bec_second_fraud";
+    // Concealing the mailbox data exposure: it surfaces later.
+    if (disclosure === "none" && s.flags.mailboxDataExposure) {
+        s.flags.concealed = true;
+        return "ending_bec_breach_undisclosed";
+    }
+    // Turned the impersonated vendor into a legal adversary.
+    if (s.flags.vendorWar)
+        return "ending_bec_vendor_war";
+    // Filed a claim too late after trying to keep it quiet, with nothing frozen.
+    if (s.flags.insuranceClaim && s.flags.lateNotice && !s.flags.fundsFrozen) {
+        s.flags.insuranceDenied = true;
+        return "ending_bec_insurance_denied";
+    }
+    // Clean catch: money held, attacker evicted, root cause fixed, disclosed.
+    if (s.flags.fundsFrozen && s.flags.eradicated && s.flags.rootCauseFixed && disclosure !== "none" && avgOk(s)) {
+        return "ending_bec_clean";
+    }
+    // Recovered through process after the money moved.
+    if (s.flags.bankFraud && s.flags.ic3 && s.flags.insurerNotified && !s.flags.lateNotice && s.flags.eradicated) {
+        return "ending_bec_recovered_insurance";
+    }
+    return "ending_bec_messy";
+}
+function scoreAdjust(s) {
+    let delta = 0;
+    const wins = [];
+    const losses = [];
+    const avg = (s.trust.legal + s.trust.eng + s.trust.exec) / 3;
+    if (s.flags.fundsFrozen)
+        delta += 8;
+    if (s.flags.eradicated)
+        delta += 6;
+    if (s.flags.rootCauseFixed)
+        delta += 8;
+    if (s.flags.bankFraud)
+        delta += 3;
+    if (s.flags.ic3)
+        delta += 3;
+    if (s.flags.insurerNotified && !s.flags.lateNotice)
+        delta += 2;
+    if (s.flags.disclosedProperly)
+        delta += 5;
+    if (s.flags.secondFraud)
+        delta -= 14;
+    if (s.flags.concealed)
+        delta -= 12;
+    if (s.flags.vendorWar)
+        delta -= 10;
+    if (s.flags.persistenceRemained)
+        delta -= 8;
+    if (s.flags.lateNotice)
+        delta -= 6;
+    if (s.flags.doublePaid)
+        delta -= 6;
+    if (s.flags.complacent)
+        delta -= 6;
+    if (s.flags.fundsFrozen)
+        wins.push("You started the recall inside the golden hours and the bank froze the bulk of the wire.");
+    if (s.flags.eradicated)
+        wins.push("You evicted the attacker properly: rules, forwarding, and OAuth grants, not just a password reset.");
+    if (s.flags.rootCauseFixed)
+        wins.push("You closed the process hole with out-of-band callback verification and phishing-resistant MFA.");
+    if (s.flags.bankFraud && s.flags.ic3)
+        wins.push("You ran the formal recovery track: bank fraud unit and an IC3 complaint on the record.");
+    if (s.flags.insurerNotified && !s.flags.lateNotice)
+        wins.push("You notified the cyber insurer inside the policy window, keeping the claim alive.");
+    if (s.flags.disclosedProperly)
+        wins.push("You treated the mailbox access as the breach it was and disclosed it properly.");
+    if (s.flags.secondFraud)
+        losses.push("You declared eviction before it was real, and the surviving access funded a second fraud.");
+    if (s.flags.persistenceRemained)
+        losses.push("A consent-granted OAuth application kept reading the mailbox after your reset.");
+    if (s.flags.concealed)
+        losses.push("You concealed a sixteen-day mailbox compromise, turning a fraud into an undisclosed breach.");
+    if (s.flags.vendorWar)
+        losses.push("You turned an impersonated, fellow-victim supplier into a legal adversary.");
+    if (s.flags.lateNotice)
+        losses.push("You delayed the insurer notification while keeping it quiet, weakening or voiding the claim.");
+    if (s.flags.complacent)
+        losses.push("You dismissed the early signal as benign and missed the recall window entirely.");
+    if (s.flags.doublePaid && !s.flags.fundsFrozen)
+        losses.push("The company simply absorbed the loss and paid the vendor twice.");
+    if (avg < 45)
+        losses.push("Stakeholder trust eroded badly. Finance and Legal will both remember how this was run.");
+    return { delta, wins, losses };
+}
+exports.becScenario = {
+    meta: {
+        id: "bec",
+        title: "Pending Wire",
+        codename: "Business Email Compromise",
+        blurb: "A $1.8M payment just left on a forged banking change. The mailbox has been read for two weeks. Get the money, evict the ghost, and decide what to disclose.",
+        premise: "There are no sirens. Just a quiet inbox rule, an odd login, and a wire that already cleared. A patient attacker has lived in a Finance mailbox for sixteen days and turned your own payment process into their cash-out. You will work it from three seats: race the bank's golden hours, decide whether the attacker is really gone, and answer for a loss and a breach hiding inside what everyone wants to call a simple mistake.",
+        difficulty: "Standard",
+        accent: "amber",
+        tags: ["BEC", "Wire Fraud", "Email Security", "Insurance"],
+        acts: 3,
+    },
+    firstScene: "bec_start",
+    initialState: () => ({
+        scene: "bec_start",
+        clock: 0,
+        caseStrength: 25,
+        dataExposure: 40,
+        trust: { legal: 55, eng: 55, exec: 55 },
+        flags: {},
+        intel: [],
+        log: [],
+    }),
+    scenes: SCENES,
+    meterLabels: {
+        primary1: "Recovery",
+        primary2: "Funds at Risk",
+        s1: "Legal / Bank",
+        s2: "Finance",
+        s3: "Executive",
+    },
+    scoreAdjust,
+};
+
+  return exports.becScenario;
+})();
+
+const supplyChainScenario = (function(){
+  const exports = {}; const module = { exports: exports };
+  const require = function(){ return {}; };
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.supplyChainScenario = void 0;
+/**
+ * Scenario: "Trust Anchor"
+ * A software supply-chain compromise. Three seats:
+ *   Act 1  - SOC Analyst         (the advisory)
+ *   Act 2  - Incident Commander  (limited control, hard choices)
+ *   Act 3  - CISO                (the vendor, and your own downstream)
+ *
+ * Ground truth: NorthBridge Monitor, a monitoring/RMM agent you run on 400+
+ * systems, shipped a trojanized update. The backdoor is present on every
+ * affected install and beacons to attacker infrastructure. Whether the actor
+ * has gotten hands-on in YOUR network is the fog, and it is mostly a function
+ * of how fast you move. You cannot fix the vendor's code. You can only decide
+ * how much to trust them, how hard to hunt, and what to tell the people
+ * downstream of you.
+ */
+function avgOk(s) {
+    return (s.trust.legal + s.trust.eng + s.trust.exec) / 3 >= 48;
+}
+const SCENES = {
+    // ───────────────────────────── ACT 1 - SOC ANALYST ─────────────────────────
+    sc_start: {
+        id: "sc_start",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 08:15",
+        title: "The Advisory",
+        body: [
+            "It comes in as a threat-intel advisory, not an alert, which is somehow worse. A sophisticated actor compromised the build pipeline of NorthBridge, the vendor whose monitoring agent runs on basically everything you own, and shipped a signed, trojanized update. Versions 14.2 through 14.4 contain a backdoor that beacons to attacker infrastructure.",
+            "You check. You are on 14.3, pushed to 412 endpoints and servers six weeks ago. The agent runs as SYSTEM. It can see everything, reach everything, and it was signed by a certificate your whole estate trusts.",
+            "The backdoor is definitely present. Whether the attacker has actually used it against you, specifically, out of their thousands of victims, is the question nobody can answer yet.",
+        ],
+        intelReveal: [
+            "NorthBridge Monitor 14.2-14.4 ships a backdoor via a compromised, validly-signed update.",
+            "You run 14.3 on 412 systems. The agent runs as SYSTEM with full reach.",
+            "(unconfirmed) Backdoor is present. Active hands-on-keyboard exploitation in your environment is not yet confirmed or ruled out.",
+        ],
+        choices: [
+            {
+                label: "Hunt for active exploitation in your own environment now",
+                detail: "Find out if you were actually targeted before you decide anything.",
+                effect: { clock: 40, caseStrength: 10, set: ["hunted"], intel: ["You start hunting for the backdoor's behavior: the C2 domains, anomalous SYSTEM activity, new accounts, lateral movement."] },
+                next: "sc_hunt",
+            },
+            {
+                label: "Block the C2 domains and isolate the agent's egress",
+                detail: "Sever the backdoor's channel fast. You can scope after.",
+                effect: { clock: 20, caseStrength: 8, dataExposure: -6, set: ["egressBlocked"], intel: ["You push the published C2 indicators to the firewall and proxy, and restrict the agent's outbound paths. If they have not pivoted yet, you just made it much harder."] },
+                next: "sc_block",
+            },
+            {
+                label: "Rip the NorthBridge agent off every system right now",
+                detail: "Remove the backdoor immediately. It is load-bearing, and you will go blind.",
+                effect: { clock: 30, caseStrength: 6, dataExposure: 8, set: ["agentRemoved", "blindOps"], trust: { eng: -12 }, intel: ["You force-uninstall the agent fleet-wide. The backdoor is gone. So is your monitoring, your patch automation, and a chunk of your operational visibility. Ops is paging you already."] },
+                next: "sc_ripcord",
+            },
+            {
+                label: "Wait for NorthBridge's official guidance and patch",
+                detail: "They know their product. Let them tell you what to do.",
+                effect: { clock: 180, dataExposure: 12, set: ["deferredToVendor"], intel: ["You hold for vendor guidance. It arrives slowly, in fragments, and is mostly reassurance. The hours pass. The backdoor keeps beaconing."] },
+                next: "sc_defer",
+            },
+        ],
+    },
+    sc_hunt: {
+        id: "sc_hunt",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 09:30",
+        title: "Looking for Hands",
+        body: [
+            "You go looking for the difference between present and used. A backdoor that is merely installed beacons and waits. A backdoor that is being operated leaves fingerprints: new local admin accounts, credential access, lateral movement, files staged for exfiltration.",
+        ],
+        onEnter: () => ({ caseStrength: 12, dataExposure: -4, set: ["hunted", "dormantImplant"], intel: ["Result: the implant is beaconing on 14 hosts, but you find no hands-on-keyboard activity, no new accounts, no lateral movement. You appear to have caught it before the actor worked their way down to you. That can change by the hour."] }),
+        choices: [
+            {
+                label: "Block the C2 channel now as well",
+                detail: "Close the door while it is still just sitting there.",
+                effect: { clock: 15, caseStrength: 6, dataExposure: -6, set: ["egressBlocked"] },
+                next: "sc_block",
+                show: (s) => !s.flags.egressBlocked,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "You have a read on the situation. Get the response organized.",
+                effect: { clock: 8 },
+                next: "sc_warroom",
+            },
+        ],
+    },
+    sc_block: {
+        id: "sc_block",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 09:00",
+        title: "Cutting the Cord",
+        body: [
+            "The C2 channel is the attacker's steering wheel. With the published indicators blocked and the agent's egress restricted, an implant that has not already pivoted is now a beacon shouting into a wall.",
+            "It is not eradication. The agent is still there, still trusted, still running as SYSTEM. But you have bought time and taken away their easy path.",
+        ],
+        choices: [
+            {
+                label: "Now hunt for active exploitation before escalating",
+                detail: "Channel is cut. Find out if they already got in.",
+                effect: { clock: 35 },
+                next: "sc_hunt",
+                show: (s) => !s.flags.hunted,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Hand it up with the channel contained.",
+                effect: { clock: 8 },
+                next: "sc_warroom",
+            },
+        ],
+    },
+    sc_ripcord: {
+        id: "sc_ripcord",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 09:10",
+        title: "Flying Blind",
+        body: [
+            "The agent is gone and so is the threat that came with it. The problem is everything else that agent did. Patch deployment is manual now. Half your endpoint telemetry just went dark. The NOC dashboards are full of grey tiles, and nobody can tell whether a quiet host is quiet because it is fine or quiet because you blinded yourself to it.",
+            "You removed the backdoor and, in the same motion, removed your ability to see whether it had already been used. Decisive is not the same as wise, and you will not know which this was for a while.",
+        ],
+        intelReveal: [
+            "Agent removed fleet-wide. Backdoor eliminated. Operational visibility severely degraded.",
+            "(unconfirmed) Whether the actor harvested credentials or established other persistence before removal is now much harder to determine.",
+        ],
+        choices: [
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Own the call and organize what comes next.",
+                effect: { clock: 8 },
+                next: "sc_warroom",
+            },
+        ],
+    },
+    sc_defer: {
+        id: "sc_defer",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 13:40",
+        title: "Waiting Room",
+        body: [
+            "You wait, because the vendor surely understands their own product better than you do. The guidance, when it dribbles out, is a masterclass in saying little: an acknowledgement, a promise of a patch, a list of indicators that is shorter than the one the threat-intel community published this morning.",
+            "Meanwhile the backdoor has had an extra five hours of uninterrupted access to an estate where it runs as SYSTEM. Trusting the vendor to drive your incident response was a decision, even though it felt like the absence of one.",
+        ],
+        intelReveal: ["Vendor guidance is slow and thin. Five hours of attacker access have elapsed while you waited."],
+        choices: [
+            {
+                label: "Stop waiting and escalate to the Incident Commander",
+                detail: "You have lost time. Get the response moving.",
+                effect: { clock: 10 },
+                next: "sc_warroom",
+            },
+        ],
+    },
+    // ─────────────────────────── ACT 2 - INCIDENT COMMANDER ─────────────────────
+    sc_warroom: {
+        id: "sc_warroom",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Tue, midday",
+        title: "Limited Control",
+        body: [
+            "You are running an incident where you did not write the vulnerable code, cannot patch it yourself, and depend on a vendor who is slow, embarrassed, and lawyered. The room reflects it. Raj from Operations points out, correctly, that NorthBridge is wired into patching, monitoring, and automation, and that ripping it out blindly trades a maybe-breach for a definite outage. Priya from Legal is reading the contract for the word indemnification. Procurement keeps calling NorthBridge a market leader, as if that is comforting rather than the entire problem. The CEO wants to know if customer data is exposed.",
+            "Nobody in the room can fix the root cause. You can only decide how hard to assume the worst.",
+        ],
+        onEnter: (s) => {
+            if (!s.flags.dormantImplant && !s.flags.activeIntrusion) {
+                if (s.flags.deferredToVendor) {
+                    return { dataExposure: 10, set: ["activeIntrusion"], trust: { exec: -6 }, intel: ["A belated hunt now finds what an early one would have prevented: a new local administrator account and lateral movement to two servers. While you waited for the vendor, the actor got hands-on. This is an active intrusion."] };
+                }
+                return { set: ["dormantImplant"], intel: ["Scoping indicates the implant is present but shows no signs of hands-on exploitation in your environment. You appear to have moved before they did."] };
+            }
+        },
+        choices: [
+            {
+                label: "Assume breach: hunt the whole estate and rotate every secret the agent could reach",
+                detail: "Treat SYSTEM-level access as fully compromised. Thorough and expensive.",
+                effect: { clock: 90, caseStrength: 14, dataExposure: -8, set: ["assumedBreach"], trust: { legal: 10, exec: -4 }, intel: ["You launch a full hunt and begin rotating credentials, certificates, and keys the agent could have harvested. You stop assuming you got lucky."] },
+                next: "sc_eradicate",
+            },
+            {
+                label: "Contain and monitor: restrict the agent, block C2, wait for the verified patch",
+                detail: "Measured. Reasonable if the implant is truly dormant. A gamble if it is not.",
+                effect: { clock: 40, caseStrength: 4, trust: { eng: 8, exec: 4 }, set: ["containMonitor"], intel: ["You restrict the agent, hold the C2 blocks, and settle in to wait for a trustworthy patch rather than tear the estate apart."] },
+                next: "sc_contain_monitor",
+            },
+            {
+                label: "Rip and replace: remove the agent everywhere and rebuild on new tooling",
+                detail: "Decisive and costly. You leave the compromised platform entirely.",
+                effect: { clock: 120, caseStrength: 10, dataExposure: 6, set: ["ripReplace", "droppedVendor", "eradicated", "secretsRotated", "opsPain"], trust: { eng: -10, legal: 6 }, intel: ["The decision is made to leave NorthBridge entirely: remove the agent, rebuild affected systems, rotate secrets, and stand up a replacement. It will hurt operationally for weeks, but it ends the dependency on a betrayed trust anchor."] },
+                next: "sc_rip_replace",
+            },
+        ],
+    },
+    sc_eradicate: {
+        id: "sc_eradicate",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Tue, evening",
+        title: "Assume the Worst",
+        body: [
+            "Assuming breach is uncomfortable precisely because it is so much work when you might have been fine. You hunt across the estate, and you rotate everything an agent running as SYSTEM could have touched: domain credentials, service accounts, API keys, signing certificates. If the attacker harvested secrets, you are changing the locks before they can use the keys.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.activeIntrusion) {
+                return { caseStrength: 12, dataExposure: -12, set: ["eradicated", "secretsRotated", "foundActive"], intel: ["The hunt pays off: you locate and evict the hands-on activity, isolate the two beachhead servers, and rotate the credentials the actor had already grabbed. You caught a real, live intrusion and shut it down."] };
+            }
+            return { caseStrength: 10, dataExposure: -8, set: ["eradicated", "secretsRotated"], intel: ["The hunt finds no hands-on activity, which is the good outcome. You rotate the at-risk secrets anyway, because a dormant implant with SYSTEM access is not a thing you take on faith."] };
+        },
+        choices: [
+            {
+                label: "Decide whether and how to go back on the product",
+                detail: "The estate is secured. The vendor question remains.",
+                effect: { clock: 15 },
+                next: "sc_vendor_patch",
+            },
+        ],
+    },
+    sc_contain_monitor: {
+        id: "sc_contain_monitor",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed",
+        title: "The Waiting Game",
+        body: [
+            "Containing and monitoring is the most defensible-sounding option and the one that ages the worst when you guessed wrong about dormant. You hold the line, watch the restricted agent, and wait for a patch you can trust.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.activeIntrusion) {
+                return { dataExposure: 22, caseStrength: -8, set: ["deepened"], intel: ["BAD: the implant was not dormant. During the days you spent containing and monitoring, the actor, already hands-on, quietly staged and exfiltrated data through a path your restrictions did not cover. The monitoring caught it only after it mattered."] };
+            }
+            return { caseStrength: 4, intel: ["The implant stays quiet. The containment holds. You wait for the patch without further damage, having spent the credibility you would have lost if it had gone the other way."] };
+        },
+        choices: [
+            {
+                label: "Move to the vendor patch decision",
+                detail: "The wait is for a fix you can trust. Now it arrives.",
+                effect: { clock: 15 },
+                next: "sc_vendor_patch",
+            },
+        ],
+    },
+    sc_rip_replace: {
+        id: "sc_rip_replace",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "The following weeks",
+        title: "Off the Platform",
+        body: [
+            "Leaving entirely is the only option that does not require you to ever trust NorthBridge's pipeline again, and it is brutal. Monitoring runs on a skeleton replacement. Patch automation is half-manual. Two projects slip because the team is rebuilding instead of building.",
+            "But the dependency is severed. Whatever NorthBridge does or does not do next, it is no longer your incident to inherit.",
+        ],
+        intelReveal: ["NorthBridge removed estate-wide; replacement tooling being stood up. Operationally painful, strategically clean."],
+        choices: [
+            {
+                label: "Move to the resolution and the disclosure decision",
+                detail: "The platform is gone. The accounting begins.",
+                effect: { clock: 20 },
+                next: "sc_resolution",
+            },
+        ],
+    },
+    sc_vendor_patch: {
+        id: "sc_vendor_patch",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Day 4",
+        title: "Fool Me Twice",
+        body: [
+            "NorthBridge ships a patch and a clean build, with a press release about their renewed commitment to security and a strong implication that everyone should update immediately to put this behind them.",
+            "Here is the thing nobody upstream wants you to dwell on: the reason you are in this mess is that their build pipeline produced a validly-signed malicious update. The signature on this new build means exactly as much as the signature on the last one did. Trust, having been the attack vector, is not a thing you get to extend on reputation.",
+        ],
+        choices: [
+            {
+                label: "Deploy the vendor's patched build immediately to restore operations",
+                detail: "Get back to normal fast. Their signature, their assurance.",
+                effect: { clock: 20, trust: { eng: 8, exec: 8 }, set: ["patchedFast"], intel: ["You push the new build across the estate to end the disruption and trust the vendor's word that the pipeline is clean now."] },
+                next: "sc_reinfection",
+            },
+            {
+                label: "Independently verify the patched build before deploying it anywhere",
+                detail: "Hashes, sandbox detonation, third-party validation. Slower, sane.",
+                effect: { clock: 50, caseStrength: 10, dataExposure: -6, set: ["verifiedPatch"], trust: { legal: 8, eng: -2 }, intel: ["You refuse to take the signature on faith. The build is hashed, detonated in a sandbox, and validated independently before a single production system gets it. It checks out, and now you actually know that."] },
+                next: "sc_resolution",
+            },
+            {
+                label: "Stay off the product entirely until you fully trust it again",
+                detail: "Run degraded indefinitely rather than re-extend trust prematurely.",
+                effect: { clock: 30, caseStrength: 4, set: ["stayedOff", "opsPain"], trust: { eng: -6, legal: 6 }, intel: ["You decline to redeploy at all for now, accepting degraded operations over a premature return to a platform that earned its suspicion."] },
+                next: "sc_resolution",
+            },
+        ],
+    },
+    sc_reinfection: {
+        id: "sc_reinfection",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Day 6",
+        title: "Signed, Again",
+        body: [
+            "For two days the patched build looks like relief. Then the threat-intel community, which apparently trusted the vendor less than you did, publishes that the actor had deeper access to the pipeline than NorthBridge admitted, and that the first patch was itself tampered with before signing. You deployed it across 412 systems on the strength of a signature, which is the exact mistake that started all of this, performed a second time with full knowledge of the first.",
+            "The backdoor is back, on more systems, with your own change-management process as the delivery mechanism. The actor did not need to break in. You let them in twice through the front door, and held it open.",
+        ],
+        intelReveal: ["REINFECTION: the vendor's 'clean' patch was also compromised. Deploying it on faith reintroduced attacker access estate-wide."],
+        onEnter: () => ({ caseStrength: -16, dataExposure: 26, set: ["reinfection"], trust: { legal: -10, exec: -12 } }),
+        choices: [
+            {
+                label: "Take it to the executive table and start over, properly this time",
+                detail: "There is no fast path left. Move to the fallout.",
+                effect: { clock: 30 },
+                next: "sc_resolution",
+            },
+        ],
+    },
+    // ──────────────────────────────── ACT 3 - CISO ──────────────────────────────
+    sc_resolution: {
+        id: "sc_resolution",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "The Vendor Question",
+        body: [
+            "The technical incident is settling. The relationship question is not. NorthBridge betrayed a trust you had every reason to extend, and how you handle them now is partly justice and partly strategy, because half your peers are still running their agent and watching what victims like you decide to do.",
+        ],
+        onEnter: (s) => {
+            const reveal = [];
+            if (s.flags.reinfection)
+                reveal.push("FINAL: the second compromise widened the blast radius and the board wants to know why a betrayed vendor's word was trusted twice.");
+            else if (s.flags.deepened)
+                reveal.push("FINAL: data was exfiltrated during the containment window. The intrusion was real and it cost you.");
+            else if (s.flags.foundActive)
+                reveal.push("FINAL: a live intrusion was caught and evicted. It was real, and you got to it.");
+            else
+                reveal.push("FINAL: no confirmed hands-on compromise in your environment. The implant was present; you appear to have moved before it was used.");
+            return { intel: reveal };
+        },
+        choices: [
+            {
+                label: "Hold the vendor accountable: invoke the contract, demand a root-cause report, stay a partner in the fix",
+                detail: "Justice and leverage, without burning a bridge you may still need.",
+                effect: { clock: 20, caseStrength: 4, set: ["vendorAccountable"], trust: { legal: 8, exec: 4 } },
+                next: "sc_disclosure",
+            },
+            {
+                label: "Drop NorthBridge entirely and migrate off, whatever it costs",
+                detail: "Trust is gone. Vote with your footprint.",
+                effect: { clock: 25, set: ["droppedVendor"], trust: { eng: -4, legal: 6 } },
+                next: "sc_disclosure",
+            },
+            {
+                label: "Accept their explanation; it happened to everyone, they are still the market leader",
+                detail: "Move on quietly. Renew the contract. Learn little.",
+                effect: { clock: 10, caseStrength: -4, set: ["vendorPass"], trust: { exec: 6, legal: -6 } },
+                next: "sc_disclosure",
+            },
+        ],
+    },
+    sc_disclosure: {
+        id: "sc_disclosure",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "You Are Also Upstream",
+        body: [
+            "There is a reframing that makes this disclosure decision sharper than usual. A supply-chain attack works by turning a trusted vendor into a conduit to its customers. If the actor was active in your environment, then you, in turn, are a trusted vendor or partner to someone else, and the same logic that made NorthBridge dangerous to you makes a quiet compromise of yours dangerous to your own downstream.",
+            "You were on the receiving end of someone deciding what to tell their customers. Now it is your turn to make that decision.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.activeIntrusion || s.flags.deepened || s.flags.reinfection) {
+                return { intel: ["The compromise in your environment was real. Your customers and partners have a legitimate interest in knowing whether it reached them through you."] };
+            }
+            return { intel: ["No confirmed downstream impact. Disclosure here is about transparency on a near-miss rather than a confirmed breach of your customers' data."] };
+        },
+        choices: [
+            {
+                label: "Disclose proactively to customers, partners, and regulators as warranted",
+                detail: "Be the vendor you wish NorthBridge had been.",
+                effect: { clock: 30, set: ["disclosedProperly"], trust: { legal: 10, exec: -6 } },
+                next: (s) => resolveScEnding(s, "proactive"),
+            },
+            {
+                label: "Disclose the minimum strictly required, and only to those strictly owed it",
+                detail: "Narrow and careful. Legal's cautious line.",
+                effect: { clock: 20, trust: { exec: 6, legal: -2 } },
+                next: (s) => resolveScEnding(s, "minimal"),
+            },
+            {
+                label: "Say nothing externally; treat it as an internal IT matter",
+                detail: "Bet that your compromise never reached anyone downstream.",
+                effect: { clock: 10, trust: { exec: 8, legal: -12 } },
+                next: (s) => resolveScEnding(s, "none"),
+            },
+        ],
+    },
+    // ──────────────────────────────── ENDINGS ───────────────────────────────────
+    ending_sc_clean: {
+        id: "ending_sc_clean",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Moved First",
+        isEnding: true,
+        endingTitle: "Outcome: One of Thousands, Treated as the One",
+        endingTone: "win",
+        body: [
+            "You were one of thousands of installs and you behaved as if you were the one that mattered. You moved before the actor worked their way down to you, you assumed SYSTEM-level access meant SYSTEM-level compromise and rotated accordingly, and crucially you refused to extend trust to the vendor's next build on a signature alone, which is the exact reflex that the whole attack was designed to exploit.",
+            "The implant was present and never got to be anything more. You verified your way back to normal instead of hoping your way there, and you were transparent with your own downstream because you had just learned, viscerally, what silence upstream feels like.",
+            "Supply-chain compromises are won by the victims who refuse to be passengers. You drove.",
+        ],
+    },
+    ending_sc_contained_active: {
+        id: "ending_sc_contained_active",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Caught a Live One",
+        isEnding: true,
+        endingTitle: "Outcome: It Was Real, and You Shut It Down",
+        endingTone: "mixed",
+        body: [
+            "This one was not a drill. The actor had gone hands-on in your environment, and the only reason it is a contained incident rather than a catastrophe is that you assumed breach, hunted like you meant it, and rotated the credentials they had already stolen before they could be used at scale.",
+            "It cost you. There was a real intrusion, real eviction, real credential rotation across the estate, and a stretch where you did not know how bad it was. But you found the live access and closed it, verified your path back, and told the people who needed telling. That is a genuine save on the hardest version of this incident.",
+            "You did not get lucky. You got thorough, on the day it actually counted.",
+        ],
+    },
+    ending_sc_reinfection: {
+        id: "ending_sc_reinfection",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Trusted Them Twice",
+        isEnding: true,
+        endingTitle: "Outcome: You Re-Signed the Same Mistake",
+        endingTone: "loss",
+        body: [
+            "The entire attack worked because a trusted signature delivered malicious code. Presented with a chance to learn that lesson, you deployed the vendor's next signed build across the estate without verifying it, and the actor, who had deeper pipeline access than the vendor admitted, used your own change management to reinfect you on more systems than the first time.",
+            "The technical failure is a missing verification step. The deeper failure is that the attack told you exactly what it was, in the clearest possible terms, and you extended trust on reputation anyway. In a supply-chain incident, the vendor's word is the one input you specifically cannot accept at face value, because their word is what got compromised.",
+            "Fool me once is the vendor's fault. The rest of that sentence is the finding.",
+        ],
+    },
+    ending_sc_deepened: {
+        id: "ending_sc_deepened",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "While You Watched",
+        isEnding: true,
+        endingTitle: "Outcome: Contained, Monitored, and Exfiltrated",
+        endingTone: "loss",
+        body: [
+            "Contain and monitor is a fine strategy for an implant that is genuinely dormant and a quiet disaster for one that is not. Yours was not. While you held the line and watched and waited for a trustworthy patch, the actor, already hands-on, finished staging and walked the data out through a path your restrictions did not anticipate.",
+            "The monitoring worked exactly as designed, which is the painful part: it told you about the exfiltration in detail, shortly after it was complete. Against a present-but-quiet backdoor with SYSTEM access, watching is not a neutral choice. It is a bet that they have not started, and you had no basis to make it.",
+            "You had the telemetry. What you needed was the assumption that you were already too late, and the hunt that assumption demands.",
+        ],
+    },
+    ending_sc_ops_collapse: {
+        id: "ending_sc_ops_collapse",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Blinded",
+        isEnding: true,
+        endingTitle: "Outcome: You Pulled the Plug and Secured Nothing",
+        endingTone: "loss",
+        body: [
+            "Ripping the agent out felt like the strong move, and for the backdoor it was. But you tore out the monitoring, the patch automation, and the visibility in one motion, and then never did the unglamorous work of hunting and rotating secrets through the wreckage. You traded a maybe-compromise for a definite blackout, and in the blackout you missed whether the actor had already harvested what they needed before you blinded yourself.",
+            "Operations spent weeks limping. Two genuine outages happened that your removed monitoring would have caught. And the question that started the incident, were we actually breached, is one you can no longer answer, because you destroyed the evidence on your way to feeling decisive.",
+            "Removing the threat and securing the environment are different jobs. You did the loud one and skipped the one that mattered.",
+        ],
+    },
+    ending_sc_undisclosed_cascade: {
+        id: "ending_sc_undisclosed_cascade",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "The Conduit",
+        isEnding: true,
+        endingTitle: "Outcome: You Became the NorthBridge",
+        endingTone: "loss",
+        body: [
+            "You were actively compromised through a vendor who stayed quiet too long, and then you made the identical choice toward your own customers: a real intrusion, reframed as an internal IT matter, disclosed to no one. The symmetry is not subtle.",
+            "It surfaces the way these do, through a customer whose own incident traces back through you, and now the conversation is not about a supply-chain attack you were a victim of. It is about a compromise you concealed from the people who trusted you, exactly as NorthBridge concealed it from you, while you were in the room being furious about it.",
+            "The attack made you a victim. The silence made you a link in the chain. Only one of those was your decision.",
+        ],
+    },
+    ending_sc_messy: {
+        id: "ending_sc_messy",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Through It",
+        isEnding: true,
+        endingTitle: "Outcome: Survived, with Open Questions",
+        endingTone: "mixed",
+        body: [
+            "You got through it. The agent is handled one way or another, operations are stabilizing, and the worst-case scenarios did not arrive, or at least have not announced themselves. There is a residue of uncertainty: things not fully hunted, secrets not fully rotated, a vendor relationship left in an awkward middle state.",
+            "The after-action will be a long one, full of we-should-haves that are clear now and were genuinely hard in the moment, under a vendor's drip-feed and an operations team's reasonable objections. None of it sank you. Some of it will keep you up later.",
+            "Not a clean save. A survived incident, with a to-do list that is really a list of next time.",
+        ],
+    },
+};
+function resolveScEnding(s, disclosure) {
+    // Re-trusting the vendor's build dominates.
+    if (s.flags.reinfection)
+        return "ending_sc_reinfection";
+    // Pulled the agent, never secured the environment.
+    if (s.flags.blindOps && !s.flags.eradicated)
+        return "ending_sc_ops_collapse";
+    // Concealing a real compromise that may have cascaded downstream.
+    if (disclosure === "none" && (s.flags.activeIntrusion || s.flags.deepened)) {
+        s.flags.concealed = true;
+        return "ending_sc_undisclosed_cascade";
+    }
+    // Watched a live implant exfiltrate during the monitoring window.
+    if (s.flags.deepened)
+        return "ending_sc_deepened";
+    // Clean close-out: eradicated, secrets rotated, trust not re-extended blindly, disclosed.
+    if (s.flags.eradicated &&
+        s.flags.secretsRotated &&
+        (s.flags.verifiedPatch || s.flags.stayedOff || s.flags.droppedVendor) &&
+        disclosure !== "none" &&
+        avgOk(s)) {
+        return s.flags.activeIntrusion ? "ending_sc_contained_active" : "ending_sc_clean";
+    }
+    return "ending_sc_messy";
+}
+function scoreAdjust(s) {
+    let delta = 0;
+    const wins = [];
+    const losses = [];
+    const avg = (s.trust.legal + s.trust.eng + s.trust.exec) / 3;
+    if (s.flags.eradicated)
+        delta += 6;
+    if (s.flags.secretsRotated)
+        delta += 6;
+    if (s.flags.verifiedPatch)
+        delta += 6;
+    if (s.flags.hunted)
+        delta += 3;
+    if (s.flags.foundActive)
+        delta += 4;
+    if (s.flags.disclosedProperly)
+        delta += 5;
+    if (s.flags.reinfection)
+        delta -= 16;
+    if (s.flags.concealed)
+        delta -= 12;
+    if (s.flags.deepened)
+        delta -= 10;
+    if (s.flags.blindOps && !s.flags.eradicated)
+        delta -= 10;
+    if (s.flags.activeIntrusion)
+        delta -= 4;
+    if (s.flags.vendorPass)
+        delta -= 4;
+    if (s.flags.opsPain)
+        delta -= 3;
+    if (s.flags.hunted)
+        wins.push("You hunted your own environment instead of waiting to be told whether you were a victim.");
+    if (s.flags.eradicated && s.flags.secretsRotated)
+        wins.push("You treated SYSTEM-level access as full compromise and rotated the secrets the agent could reach.");
+    if (s.flags.foundActive)
+        wins.push("You found and evicted a real, hands-on intrusion that a slower response would have missed.");
+    if (s.flags.verifiedPatch)
+        wins.push("You refused to redeploy on the vendor's signature alone and independently verified the build first.");
+    if (s.flags.droppedVendor)
+        wins.push("You ended the dependency on a vendor whose pipeline had been the attack vector.");
+    if (s.flags.disclosedProperly)
+        wins.push("You disclosed downstream like the vendor you wish NorthBridge had been.");
+    if (s.flags.reinfection)
+        losses.push("You redeployed the vendor's next signed build without verifying it, and reintroduced the backdoor at scale.");
+    if (s.flags.deepened)
+        losses.push("You contained and monitored a live implant while it finished exfiltrating your data.");
+    if (s.flags.blindOps && !s.flags.eradicated)
+        losses.push("You removed the agent but never hunted or rotated, blinding operations and securing nothing.");
+    if (s.flags.concealed)
+        losses.push("You concealed a real compromise, becoming the silent conduit you resented in your own vendor.");
+    if (s.flags.activeIntrusion && !s.flags.foundActive)
+        losses.push("There was a live intrusion in your environment that your response did not fully run to ground.");
+    if (s.flags.vendorPass)
+        losses.push("You accepted the vendor's reassurance and re-extended trust without changing anything.");
+    if (avg < 45)
+        losses.push("Stakeholder trust eroded between the outage risk and the vendor fight. The next decision will be harder to land.");
+    return { delta, wins, losses };
+}
+exports.supplyChainScenario = {
+    meta: {
+        id: "supplychain",
+        title: "Trust Anchor",
+        codename: "Supply Chain Compromise",
+        blurb: "A trusted monitoring vendor shipped a signed backdoor to 412 of your systems. You cannot patch their code. Decide how hard to assume the worst, and how much to trust them next.",
+        premise: "A monitoring agent you run on everything just got revealed as a signed, trojanized backdoor running as SYSTEM across your estate. You did not write the flaw and you cannot fix it; the vendor is slow, embarrassed, and still the only one who can ship a patch. You will work it from three seats with limited control: decide whether you were actually targeted, whether to tear out a load-bearing tool, whether to trust the vendor's next build, and what to tell the people downstream of you, who are now in the position you were this morning.",
+        difficulty: "Hard",
+        accent: "purple",
+        tags: ["Supply Chain", "Third-Party Risk", "Threat Hunting", "Vendor Trust"],
+        acts: 3,
+    },
+    firstScene: "sc_start",
+    initialState: () => ({
+        scene: "sc_start",
+        clock: 0,
+        caseStrength: 12,
+        dataExposure: 35,
+        trust: { legal: 55, eng: 55, exec: 55 },
+        flags: {},
+        intel: [],
+        log: [],
+    }),
+    scenes: SCENES,
+    meterLabels: {
+        primary1: "Containment",
+        primary2: "Exposure",
+        s1: "Legal",
+        s2: "Operations",
+        s3: "Executive",
+    },
+    scoreAdjust,
+};
+
+  return exports.supplyChainScenario;
+})();
+
+const SCENARIOS = [insiderScenario, ransomwareScenario, becScenario, supplyChainScenario];
+
+// ─────────────────────────────── ENGINE ─────────────────────────────────────
+// (Mirrors app/ir-simulator/engine.ts; scenario data below is compiled from source.)
+function clamp(n) { return Math.max(0, Math.min(100, n)); }
+
+function applyEffect(state, effect) {
+  if (!effect) return state;
+  const flags = Object.assign({}, state.flags);
+  (effect.set || []).forEach((f) => (flags[f] = true));
+  (effect.clear || []).forEach((f) => (flags[f] = false));
+  const intel = state.intel.slice();
+  (effect.intel || []).forEach((l) => { if (!intel.includes(l)) intel.push(l); });
+  return {
+    scene: state.scene,
+    clock: state.clock + (effect.clock || 0),
+    caseStrength: clamp(state.caseStrength + (effect.caseStrength || 0)),
+    dataExposure: clamp(state.dataExposure + (effect.dataExposure || 0)),
+    trust: {
+      legal: clamp(state.trust.legal + ((effect.trust && effect.trust.legal) || 0)),
+      eng: clamp(state.trust.eng + ((effect.trust && effect.trust.eng) || 0)),
+      exec: clamp(state.trust.exec + ((effect.trust && effect.trust.exec) || 0)),
+    },
+    flags: flags, intel: intel, log: state.log,
+  };
+}
+
+function enterScene(state, id, scenes) {
+  const scene = scenes[id];
+  let ns = Object.assign({}, state, { scene: id });
+  if (scene.intelReveal) ns = applyEffect(ns, { intel: scene.intelReveal });
+  if (scene.onEnter) { const e = scene.onEnter(ns); if (e) ns = applyEffect(ns, e); }
+  return ns;
+}
+
+function avgTrust(s) { return Math.round((s.trust.legal + s.trust.eng + s.trust.exec) / 3); }
+function baseScore(s) { return 0.3 * s.caseStrength + 0.3 * (100 - s.dataExposure) + 0.25 * avgTrust(s); }
+function gradeFromScore(score) { return score >= 90 ? "S" : score >= 80 ? "A" : score >= 70 ? "B" : score >= 60 ? "C" : score >= 45 ? "D" : "F"; }
+function computeReport(scenario, s) {
+  const adj = scenario.scoreAdjust(s);
+  const score = clamp(baseScore(s) + adj.delta);
+  const grade = gradeFromScore(score);
+  const wins = adj.wins.slice(); const losses = adj.losses.slice();
+  if (wins.length === 0) wins.push("You reached a resolution, which is more than some incident responders manage.");
+  return { score: Math.round(score), grade: grade, wins: wins, losses: losses };
+}
+
+// ─────────────────────────────── THEMING ────────────────────────────────────
+const ACCENT = { cyan: "#22d3ee", red: "#f87171", amber: "#fbbf24", purple: "#c084fc", emerald: "#34d399" };
+const ROLE_COLOR = { "SOC Analyst": "#22d3ee", "Incident Commander": "#fbbf24", "CISO": "#c084fc" };
+const ROLE_ABBR = { "SOC Analyst": "SOC", "Incident Commander": "CMD", "CISO": "CISO" };
+const DIFF_COLOR = { Intro: "#34d399", Standard: "#fbbf24", Hard: "#f87171" };
+
+function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function accentOf(sc) { return ACCENT[sc.meta.accent] || "#22d3ee"; }
+
+// ─────────────────────────────── COMPONENTS ─────────────────────────────────
+function meterHtml(label, value, higherIsBetter) {
+  const good = higherIsBetter ? value >= 60 : value <= 35;
+  const mid = higherIsBetter ? value >= 35 : value <= 60;
+  const cls = good ? "good" : mid ? "mid" : "bad";
+  return '<div class="meter"><div class="meter-top"><span class="meter-label">' + esc(label) +
+    '</span><span class="meter-val ' + cls + '">' + Math.round(value) + '</span></div>' +
+    '<div class="meter-track"><div class="meter-fill ' + cls + '" style="width:' + value + '%"></div></div></div>';
+}
+
+function intelLineHtml(text) {
+  const unconfirmed = text.indexOf("(unconfirmed)") === 0;
+  const critical = /^(FINAL|CONFIRMED|REINFECTION|SECOND|GOOD|BAD|MIXED)/.test(text);
+  const clean = text.replace("(unconfirmed) ", "");
+  const marker = critical ? "!!" : unconfirmed ? "~" : ">";
+  const cls = critical ? "intel-critical" : unconfirmed ? "intel-unconfirmed" : "intel-normal";
+  return '<li class="intel ' + cls + '"><span class="marker">' + marker + '</span><span>' + esc(clean) + '</span></li>';
+}
+
+function hudHtml(s, labels) {
+  return '<div class="hud">' +
+    '<div class="card"><p class="hud-title">Situation</p>' +
+      meterHtml(labels.primary1, s.caseStrength, true) +
+      meterHtml(labels.primary2, s.dataExposure, false) +
+      '<div class="hud-sub"><p class="hud-title">Stakeholders</p>' +
+        meterHtml(labels.s1, s.trust.legal, true) +
+        meterHtml(labels.s2, s.trust.eng, true) +
+        meterHtml(labels.s3, s.trust.exec, true) +
+      '</div></div>' +
+    '<div class="card"><p class="hud-title">Intel Feed</p>' +
+      '<ul class="intel-feed" id="intelFeed">' + s.intel.map(intelLineHtml).join("") + '</ul></div>' +
+    '</div>';
+}
+
+// ─────────────────────────────── SCREENS ────────────────────────────────────
+function selectHtml() {
+  const cards = SCENARIOS.map(function (sc, i) {
+    const c = accentOf(sc);
+    const dc = DIFF_COLOR[sc.meta.difficulty];
+    return '<button class="sc-card" style="--c:' + c + '" onclick="pickScenario(' + i + ')">' +
+      '<div class="sc-card-top"><span class="sc-diff" style="color:' + dc + ';border-color:' + dc + '55;background:' + dc + '1a">' + esc(sc.meta.difficulty) + '</span></div>' +
+      '<p class="sc-codename" style="color:' + c + '">' + esc(sc.meta.codename) + '</p>' +
+      '<h3 class="sc-title">' + esc(sc.meta.title) + '</h3>' +
+      '<p class="sc-blurb">' + esc(sc.meta.blurb) + '</p>' +
+      '<div class="sc-tags">' + sc.meta.tags.map(function (t) { return '<span class="sc-tag">' + esc(t) + '</span>'; }).join("") + '</div>' +
+      '<span class="sc-start" style="color:' + c + '">Start scenario &rarr;</span>' +
+    '</button>';
+  }).join("");
+  return '<div class="fade"><div class="intro-head">' +
+    '<div class="kicker-pill" style="background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.2)"><span class="dot" style="background:#06b6d4"></span><span style="color:#06b6d4">Incident Response Simulator</span></div>' +
+    '<h1 class="serif">Pick Your Crisis</h1>' +
+    '<p class="intro-lead">Each scenario is a branching tabletop you work from three seats as it escalates. Your decisions compound, the intel is incomplete, and the clock never stops. Choose one to begin.</p>' +
+    '</div><div class="sc-grid">' + cards + '</div>' +
+    '<p class="sc-note">Four scenarios. Seven endings each. No two paths are the same.</p></div>';
+}
+
+function introHtml(sc) {
+  const c = accentOf(sc);
+  const cards = [
+    ["Roles shift as it escalates", "You move from the SOC floor to the war room to the executive table."],
+    ["The fog is real", "Intel arrives partial, late, and sometimes wrong. Decide anyway."],
+    ["Time has teeth", "Hesitation has a cost. So does moving before you know enough."],
+    ["Nobody agrees", "Every stakeholder in the room wants something different from you."],
+  ].map(function (x) {
+    return '<div class="card intro-card" style="border-left:3px solid ' + c + '"><div><div class="it">' + x[0] + '</div><div class="id">' + x[1] + '</div></div></div>';
+  }).join("");
+  return '<div class="intro fade">' +
+    '<button class="backlink" onclick="backToSelect()">&larr; All scenarios</button>' +
+    '<div class="kicker-pill" style="background:' + c + '1a;border:1px solid ' + c + '4d"><span class="dot" style="background:' + c + '"></span><span style="color:' + c + '">' + esc(sc.meta.codename) + '</span></div>' +
+    '<h1 class="serif">' + esc(sc.meta.title) + '</h1>' +
+    '<p class="intro-lead">' + esc(sc.meta.premise) + '</p>' +
+    '<div class="intro-grid">' + cards + '</div>' +
+    '<button class="btn-primary" onclick="begin()">Begin your shift</button>' +
+    '<p class="fine">Fictional training scenario. Decisions are keyboard-navigable (press 1-4).</p>' +
+  '</div>';
+}
+
+function playHtml(sc, scene, s) {
+  const rc = ROLE_COLOR[scene.role];
+  const visible = (scene.choices || []).filter(function (c) { return !c.show || c.show(s); });
+  const pips = [];
+  for (let i = 1; i <= sc.meta.acts; i++) {
+    const cls = i === scene.act ? "pip on" : i < scene.act ? "pip done" : "pip off";
+    pips.push('<span class="' + cls + '"></span>');
+  }
+  const choices = visible.map(function (c, i) {
+    return '<button class="choice" onclick="choose(' + i + ')">' +
+      '<span class="choice-num">' + (i + 1) + '</span><span>' +
+      '<span class="choice-label">' + esc(c.label) + '</span>' +
+      (c.detail ? '<span class="choice-detail">' + esc(c.detail) + '</span>' : '') +
+      '</span></button>';
+  }).join("");
+  return '<div class="layout fade">' +
+    '<div class="area-status"><div class="status-bar"><div class="status-left">' +
+      '<span class="role-badge" style="color:' + rc + ';border-color:' + rc + '4d;background:' + rc + '1a">' + esc(scene.role) + '</span>' +
+      '<span class="pips">' + pips.join("") + '</span>' +
+    '</div><span class="clock">&#9201; ' + esc(scene.clockLabel) + '</span></div></div>' +
+    '<div class="area-narrative"><div class="card scene-card"><h2 class="serif">' + esc(scene.title) + '</h2>' +
+      scene.body.map(function (p) { return '<p>' + esc(p) + '</p>'; }).join("") + '</div></div>' +
+    '<div class="area-hud">' + hudHtml(s, sc.meterLabels) + '</div>' +
+    '<div class="area-choices">' + choices + '</div>' +
+  '</div>';
+}
+
+function aarHtml(sc, scene, s) {
+  const report = computeReport(sc, s);
+  const labels = sc.meterLabels;
+  const toneSym = scene.endingTone === "win" ? "&#9670;" : scene.endingTone === "mixed" ? "&#9650;" : "&#9760;";
+  const toneCls = scene.endingTone === "win" ? "tone-win" : scene.endingTone === "mixed" ? "tone-mixed" : "tone-loss";
+  const gradeCls = (report.grade === "S" || report.grade === "A") ? "grade-good" : (report.grade === "B" || report.grade === "C") ? "grade-mid" : "grade-bad";
+  const wins = report.wins.map(function (w) { return '<div class="wl-item"><span class="s">+</span><span>' + esc(w) + '</span></div>'; }).join("");
+  const losses = report.losses.length
+    ? report.losses.map(function (l) { return '<div class="wl-item"><span class="s">-</span><span>' + esc(l) + '</span></div>'; }).join("")
+    : '<div class="wl-empty">Remarkably little. Clean work.</div>';
+  const trail = s.log.map(function (e) {
+    const rc = ROLE_COLOR[e.role];
+    return '<div class="trail-item"><span class="trail-tag" style="color:' + rc + ';background:' + rc + '1a">' + ROLE_ABBR[e.role] + '</span><span class="trail-choice">' + esc(e.choice) + '</span></div>';
+  }).join("");
+  return '<div class="aar fade"><div class="aar-head">' +
+    '<div class="aar-tone ' + toneCls + '">' + toneSym + '</div>' +
+    '<p class="aar-kicker">' + esc(sc.meta.title) + ' &middot; After-Action Report</p>' +
+    '<h2 class="serif">' + esc(scene.endingTitle) + '</h2>' +
+    '<div class="aar-body">' + scene.body.map(function (p) { return '<p>' + esc(p) + '</p>'; }).join("") + '</div></div>' +
+    '<div class="card mb16"><div class="grade-row"><div><p class="gr-label">Overall Grade</p><p class="gr-sub">Composite of the two situation meters and stakeholder trust.</p></div>' +
+      '<div><div class="grade-letter ' + gradeCls + '">' + report.grade + '</div><div class="grade-score">' + report.score + '/100</div></div></div></div>' +
+    '<div class="card mb16"><div class="aar-meters">' +
+      meterHtml(labels.primary1, s.caseStrength, true) + meterHtml(labels.primary2, s.dataExposure, false) +
+      meterHtml(labels.s1, s.trust.legal, true) + meterHtml(labels.s2, s.trust.eng, true) + meterHtml(labels.s3, s.trust.exec, true) +
+    '</div></div>' +
+    '<div class="wl-grid"><div class="card wl-win"><p class="wl-title">What Went Right</p>' + wins + '</div>' +
+      '<div class="card wl-loss"><p class="wl-title">What Hurt</p>' + losses + '</div></div>' +
+    '<div class="card mb16"><p class="wl-title" style="color:var(--dim)">Your Decision Trail</p>' + trail + '</div>' +
+    '<div class="aar-actions">' +
+      '<button class="btn-primary" onclick="replay()">Run it again</button>' +
+      '<button class="btn-ghost" onclick="shareResult()" id="shareBtn">Share result</button>' +
+      '<button class="btn-ghost" onclick="backToSelect()">Try another scenario</button>' +
+    '</div><p class="aar-fine">This is one of seven outcomes for this scenario. The others are reachable from the same opening.</p></div>';
+}
+
+// ─────────────────────────────── STATE + RENDER ─────────────────────────────
+let scenario = null, started = false, state = null;
+
+function render() {
+  const app = document.getElementById("app");
+  const topBtn = document.getElementById("topBtn");
+  if (!scenario) { app.innerHTML = selectHtml(); topBtn.style.display = "none"; }
+  else if (!started || !state) { app.innerHTML = introHtml(scenario); topBtn.style.display = "none"; }
+  else {
+    const scene = scenario.scenes[state.scene];
+    topBtn.style.display = "inline-block";
+    app.innerHTML = scene.isEnding ? aarHtml(scenario, scene, state) : playHtml(scenario, scene, state);
+    const feed = document.getElementById("intelFeed");
+    if (feed) feed.scrollTop = feed.scrollHeight;
+  }
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function pickScenario(i) { scenario = SCENARIOS[i]; started = false; state = null; render(); }
+function backToSelect() { scenario = null; started = false; state = null; render(); }
+function begin() {
+  state = enterScene(scenario.initialState(), scenario.firstScene, scenario.scenes);
+  started = true; render();
+}
+function choose(i) {
+  const scene = scenario.scenes[state.scene];
+  const visible = (scene.choices || []).filter(function (c) { return !c.show || c.show(state); });
+  const choice = visible[i];
+  if (!choice) return;
+  let s = applyEffect(state, choice.effect);
+  s = Object.assign({}, s, { log: state.log.concat([{ role: scene.role, choice: choice.label }]) });
+  const nextId = typeof choice.next === "function" ? choice.next(s) : choice.next;
+  s = enterScene(s, nextId, scenario.scenes);
+  state = s; render();
+}
+function replay() { begin(); }
+function shareResult() {
+  const scene = scenario.scenes[state.scene];
+  const report = computeReport(scenario, state);
+  const text = 'I ran "' + scenario.meta.title + '" on the Intersys Incident Response Simulator.\n' +
+    'Outcome: ' + scene.endingTitle + '\nGrade: ' + report.grade + ' (' + report.score + '/100)';
+  const btn = document.getElementById("shareBtn");
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(function () { if (btn) { btn.textContent = "Copied"; setTimeout(function () { btn.textContent = "Share result"; }, 2000); } });
+  }
+}
+
+// Keyboard: 1-9 select a visible choice during play.
+document.addEventListener("keydown", function (e) {
+  if (!scenario || !started || !state) return;
+  const scene = scenario.scenes[state.scene];
+  if (scene.isEnding) return;
+  const n = parseInt(e.key, 10);
+  if (!Number.isNaN(n) && n >= 1 && n <= 9) {
+    const visible = (scene.choices || []).filter(function (c) { return !c.show || c.show(state); });
+    if (n <= visible.length) { e.preventDefault(); choose(n - 1); }
+  }
+});
+
+window.pickScenario = pickScenario;
+window.backToSelect = backToSelect;
+window.begin = begin;
+window.choose = choose;
+window.replay = replay;
+window.shareResult = shareResult;
+
+render();
+
+</script>
+</body>
+</html>
