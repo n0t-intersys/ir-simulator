@@ -1347,8 +1347,8 @@ const SCENES = {
             {
                 label: "Engage a specialist ransomware IR firm and notify law enforcement",
                 detail: "Bring in people who do this every week. Slower to start, far stronger footing.",
-                effect: { clock: 60, caseStrength: 12, dataExposure: -4, set: ["irFirmEngaged", "lawEnforcement", "persistenceFound"], trust: { legal: 12, exec: -6 }, intel: ["A ransomware IR firm is retained and the FBI field office is notified. The firm immediately finds two persistence mechanisms you would have missed."] },
-                next: "rw_recovery_plan",
+                effect: { clock: 60, caseStrength: 4, dataExposure: -4, set: ["irFirmEngaged", "lawEnforcement"], trust: { legal: 12, exec: -6 }, intel: ["A specialist ransomware IR firm is retained and the FBI field office is notified."] },
+                next: "rw_ir_firm",
             },
             {
                 label: "Drive an in-house recovery now: restore from backups",
@@ -1399,8 +1399,8 @@ const SCENES = {
             {
                 label: "Use the time to bring in an IR firm and recover properly",
                 detail: "Convert the stall into a real recovery.",
-                effect: { clock: 30, caseStrength: 8, set: ["irFirmEngaged", "lawEnforcement", "persistenceFound"], trust: { legal: 8, exec: -4 } },
-                next: "rw_recovery_plan",
+                effect: { clock: 30, set: ["irFirmEngaged", "lawEnforcement"], trust: { legal: 8, exec: -4 } },
+                next: "rw_ir_firm",
             },
             {
                 label: "Move toward the ransom decision",
@@ -3180,7 +3180,2366 @@ exports.supplyChainScenario = {
   return exports.supplyChainScenario;
 })();
 
-const SCENARIOS = [insiderScenario, ransomwareScenario, becScenario, supplyChainScenario];
+const ddosScenario = (function () {
+"use strict";
+/**
+ * Scenario: "Peak Hour"
+ * A volumetric + application-layer DDoS detonates against an e-commerce platform
+ * at the start of its biggest sale of the year, followed by an extortion demand.
+ * You move through three seats:
+ *   Act 1  - SOC Analyst         (the flood)
+ *   Act 2  - Incident Commander  (the ransom)
+ *   Act 3  - CISO                (the reckoning)
+ *
+ * Ground truth (revealed to the player only through good play):
+ * A booter-for-hire crew fronting a more serious actor hits ShopFront during its
+ * Spring Sale: an L3/4 volumetric flood plus a targeted L7 attack on the checkout
+ * and search API. Ninety minutes in, an email demands 4 BTC to stop, and claims
+ * "we already have your customer data." That last part is mostly a bluff - but not
+ * entirely. The L7 attack hammered a checkout endpoint that, under load, leaked
+ * partial PII (email + card last-four) in its error responses, due to a verbose
+ * 500 handler nobody had load-tested. So there IS a real, limited exposure for a
+ * sharp responder to find and close - and a bluff to call. The fog is real. The
+ * revenue clock is real, and on a sale day it is loud.
+ */
+const SCENES = {
+    // ───────────────────────────── ACT 1 - SOC ANALYST ──────────────────────────
+    start: {
+        id: "start",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Sat 11:14",
+        title: "Saturation",
+        body: [
+            "Eleven minutes past the hour on the Saturday of the Spring Sale, the biggest revenue day on ShopFront's calendar. Marketing sent the email blast at 11:00. Three hundred thousand people clicked at once. That part was expected.",
+            "This part was not: p95 latency on the storefront just went from 240 milliseconds to nine seconds, the checkout API is throwing 500s, and your edge dashboards are a wall of red. Traffic is 40x baseline, but it is not shaped like shoppers. A huge slug of it is hitting one endpoint, /api/checkout/validate, with malformed payloads, from IP space that has never bought a thing.",
+            "Your phone is already buzzing. The on-call SRE channel is filling up. Somewhere a VP is refreshing the order count and watching it flatline.",
+        ],
+        intelReveal: [
+            "Storefront p95 latency 240ms -> 9s; checkout API returning 500s.",
+            "(unconfirmed) Traffic ~40x baseline, concentrated on /api/checkout/validate.",
+            "(unconfirmed) Source IPs have no prior purchase history.",
+        ],
+        choices: [
+            {
+                label: "Characterize the traffic before you touch anything",
+                detail: "Pull the edge logs and netflow. Know what you are fighting first.",
+                effect: { clock: 18, caseStrength: 6, set: ["characterized"], intel: ["You began a structured characterization of the attack traffic."] },
+                next: "characterize",
+            },
+            {
+                label: "Flip the CDN into global \"I'm Under Attack\" mode now",
+                detail: "Challenge every visitor. Fast relief, but it walls off real shoppers too.",
+                effect: {
+                    clock: 4,
+                    caseStrength: 10,
+                    dataExposure: 14,
+                    set: ["overblocked"],
+                    trust: { eng: -6 },
+                    intel: ["You enabled a global challenge on all traffic. Origin load dropped; so did real checkouts."],
+                },
+                next: "blunt_mode",
+            },
+            {
+                label: "Page the on-call incident commander immediately",
+                detail: "Escalate now. You have red graphs and not much else.",
+                effect: { clock: 3, set: ["escalatedThin"], trust: { exec: 2 } },
+                next: "escalate_thin",
+            },
+            {
+                label: "Treat it as organic sale traffic and autoscale the fleet",
+                detail: "Throw capacity at it. It is a sale, after all.",
+                effect: {
+                    clock: 12,
+                    caseStrength: -10,
+                    dataExposure: 8,
+                    set: ["scaledIntoIt"],
+                    trust: { exec: -4, eng: -3 },
+                    intel: ["You scaled the checkout fleet up. The autoscaler is now feeding the attack more workers to saturate."],
+                },
+                next: "scaled",
+            },
+        ],
+    },
+    characterize: {
+        id: "characterize",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Sat 11:32",
+        title: "Reading the Flood",
+        body: [
+            "You stop reacting and start reading. The picture resolves fast, and it is not a sale.",
+            "It is two attacks wearing one costume. Layer 3/4: a volumetric UDP and SYN flood, ~80 Gbps, from a botnet spread across a few thousand hosts - loud, dumb, saturating your uplinks. Layer 7: a much smaller, much smarter stream of malformed POSTs to /api/checkout/validate, each one crafted to force the most expensive code path in the request handler. The L7 is what is actually melting the application.",
+            "Whoever built the L7 piece has read your API. This is not a kid with a booter panel. Or at least, not only.",
+        ],
+        intelReveal: [
+            "CONFIRMED: multi-vector DDoS. L3/4 volumetric (~80 Gbps) + targeted L7 on checkout.",
+            "L7 payloads are crafted to hit the most expensive checkout code path.",
+            "The attacker understands your API. This is not purely commodity.",
+        ],
+        choices: [
+            {
+                label: "Stand up targeted rate-limits and ASN/geo filters on the malicious sources",
+                detail: "Surgical. Drop the bots, keep the shoppers. Takes longer to tune.",
+                effect: {
+                    clock: 16,
+                    caseStrength: 16,
+                    dataExposure: -4,
+                    set: ["preciseMitigation"],
+                    trust: { eng: 8 },
+                    intel: ["You deployed source-based rate-limits and L7 fingerprint rules. The malicious stream is being dropped at the edge."],
+                },
+                next: "targeted",
+            },
+            {
+                label: "Hand off to the IC now with a clean characterization",
+                detail: "You know what it is. Let the commander coordinate the response.",
+                effect: { clock: 6, caseStrength: 4, trust: { exec: 3 } },
+                next: "command_center",
+            },
+            {
+                label: "Buy time with global under-attack mode while you plan",
+                detail: "Blunt, but it stops the bleeding at the origin right now.",
+                effect: {
+                    clock: 5,
+                    caseStrength: 8,
+                    dataExposure: 12,
+                    set: ["overblocked"],
+                    trust: { eng: -4 },
+                    intel: ["You fell back to a global challenge. Origin stabilized; legitimate shoppers are hitting walls."],
+                },
+                next: "blunt_mode",
+            },
+        ],
+    },
+    blunt_mode: {
+        id: "blunt_mode",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Sat 11:20",
+        title: "Everybody Out of the Pool",
+        body: [
+            "The challenge page goes up for everyone. Origin load craters - the graphs go green in seconds, and for a moment it feels like a win.",
+            "Then support lights up. Real customers, mid-checkout, are being bounced to a CAPTCHA that half of them fail. Cart abandonment is spiking. The mobile app, which cannot render the challenge, is simply broken. You stopped the attack by stopping everyone, and on the highest-revenue day of the year, \"everyone\" is the point.",
+            "An SRE messages you: \"This is working, but we are turning away money by the truckload. Can we be more precise?\"",
+        ],
+        intelReveal: [
+            "Global challenge is blocking the botnet - and a large share of real shoppers.",
+            "(unconfirmed) Mobile app traffic cannot pass the challenge at all.",
+        ],
+        choices: [
+            {
+                label: "Refine it: carve exceptions and target only the malicious sources",
+                detail: "Trade the sledgehammer for a scalpel. Recover the real traffic.",
+                effect: {
+                    clock: 14,
+                    caseStrength: 8,
+                    dataExposure: -8,
+                    set: ["preciseMitigation"],
+                    trust: { eng: 6 },
+                    intel: ["You replaced the blanket challenge with source-targeted rules. Real shoppers are flowing again."],
+                },
+                next: "targeted",
+            },
+            {
+                label: "Leave it blunt and hand the mess to the IC",
+                detail: "It is holding the origin up. Let the commander own the tradeoff.",
+                effect: {
+                    clock: 5,
+                    dataExposure: 16,
+                    trust: { eng: -4, exec: -4 },
+                    intel: ["The blanket challenge stays up. Origin is safe; the storefront is effectively shut to most customers."],
+                },
+                next: "command_center",
+            },
+        ],
+    },
+    escalate_thin: {
+        id: "escalate_thin",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Sat 11:19",
+        title: "\"What Am I Looking At?\"",
+        body: [
+            "Your IC picks up on the first ring; she was already watching the order graph fall. \"Talk to me. What am I looking at - is the site down, is it slow, is it an attack, or did marketing just melt us with their own email blast?\"",
+            "It is a fair question, and you do not have a clean answer yet. \"Site up but slow\" and \"we might be under attack\" is not something she can take to the CEO, who is about to call her.",
+        ],
+        choices: [
+            {
+                label: "Concede the point and go characterize it properly",
+                detail: "Get her a real answer before she has to give one.",
+                effect: { clock: 6, caseStrength: 4, set: ["characterized"], trust: { exec: -2 } },
+                next: "characterize",
+            },
+            {
+                label: "Recommend flipping global under-attack mode right now",
+                detail: "Stop the bleeding first, explain it second.",
+                effect: {
+                    clock: 5,
+                    caseStrength: 8,
+                    dataExposure: 12,
+                    set: ["overblocked"],
+                    trust: { eng: -4 },
+                    intel: ["On your recommendation, a global challenge went up before the attack was understood."],
+                },
+                next: "blunt_mode",
+            },
+        ],
+    },
+    scaled: {
+        id: "scaled",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Sat 11:28",
+        title: "Feeding the Beast",
+        body: [
+            "The autoscaler does exactly what you told it to. Forty new checkout pods come up. Within ninety seconds, all forty are pinned at 100% CPU on the same malformed requests, and the scheduler is asking for more.",
+            "You are not absorbing the attack. You are buying it more room to grow, on your credit card - the cloud bill for this hour alone just lapped the monthly budget. And the storefront is no faster, because the bottleneck was never capacity. It was a handful of requests engineered to cost you everything.",
+            "This is an attack. You should have known that twenty minutes ago.",
+        ],
+        intelReveal: [
+            "CONFIRMED: autoscaling made it worse. New capacity is being consumed by the L7 attack instantly.",
+            "Cloud spend for the hour has already exceeded the monthly budget.",
+        ],
+        choices: [
+            {
+                label: "Stop scaling and actually characterize the attack",
+                detail: "Cut your losses on the bad call and get a real picture. Late, but right.",
+                effect: { clock: 10, caseStrength: 4, set: ["characterized"], intel: ["You halted the autoscaler and began characterizing the attack in earnest."] },
+                next: "characterize",
+            },
+            {
+                label: "Escalate to the IC - this is above your pay grade now",
+                detail: "Hand it up. The hole is deep and you are still holding the shovel.",
+                effect: { clock: 5, trust: { exec: -3 } },
+                next: "command_center",
+            },
+        ],
+    },
+    targeted: {
+        id: "targeted",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Sat 11:50",
+        title: "The Flood Recedes",
+        body: [
+            "The tuning takes a while - you burn a few good rules on false starts - but then it bites. The L3/4 volume is getting absorbed and dropped upstream. The L7 fingerprints catch the malformed POSTs and shed them before they reach the application. Latency drops back under a second. Checkouts start completing again.",
+            "It is not over - the attacker is already mutating the L7 payloads to slip the fingerprints, and you are now in a tuning race against a human. But the storefront is up, real customers are buying, and you did it without locking them out.",
+            "Time to hand a stabilizing situation to the incident commander.",
+        ],
+        intelReveal: [
+            "Mitigation holding: L3/4 absorbed upstream, L7 fingerprints dropping malicious POSTs.",
+            "(unconfirmed) Attacker is mutating L7 payloads to evade the new rules.",
+        ],
+        choices: [
+            {
+                label: "Hand off to the IC with mitigation already working",
+                detail: "Give the commander a fighting position, not a fire.",
+                effect: { clock: 6, caseStrength: 4, trust: { exec: 4, eng: 2 } },
+                next: "command_center",
+            },
+        ],
+    },
+    // ─────────────────────────── ACT 2 - INCIDENT COMMANDER ──────────────────────
+    command_center: {
+        id: "command_center",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sat 12:36",
+        title: "You Have the Conn",
+        body: [
+            "You take command of the bridge call: SRE, networking, the SOC analyst, and a very quiet product VP who keeps muting to take other calls. The technical fight is mid-stream and you are getting your arms around it.",
+            "Then the incident takes a turn. An email lands in the security alias and the abuse inbox simultaneously, plain text, no signature:",
+            "\"Your site is having a hard day. We can make it stop, or make it worse. 4 BTC by 18:00 and we walk away. Ignore us and the floods escalate through your sale - and by the way, we already pulled your customer data while you were busy. Tick tock.\"",
+            "The room goes still. The CEO just joined the call.",
+        ],
+        intelReveal: [
+            "CONFIRMED: extortion demand received - 4 BTC by 18:00 to stop the attack.",
+            "(unconfirmed) Attacker claims to have exfiltrated customer data.",
+        ],
+        choices: [
+            {
+                label: "Run two tracks: keep mitigating, treat the ransom as a separate decision",
+                detail: "Do not let the email derail the technical fight. Triage both.",
+                effect: { clock: 8, trust: { eng: 5, exec: 2 }, intel: ["You split the response: one track on mitigation, one on the extortion and the data claim."] },
+                next: "war_room",
+            },
+            {
+                label: "Open a quiet backchannel to the attackers to stall and gather intel",
+                detail: "Engage to buy time and maybe trace them. It also tells them they are hurting you.",
+                effect: {
+                    clock: 10,
+                    set: ["negotiated", "tippedWeakness"],
+                    trust: { legal: -3 },
+                    intel: ["You opened a backchannel to the attackers, ostensibly to negotiate."],
+                },
+                next: "negotiate",
+            },
+            {
+                label: "Authorize payment now - every minute of downtime is real money",
+                detail: "Make it stop. The fastest path back to revenue, on paper.",
+                effect: {
+                    clock: 4,
+                    set: ["paid"],
+                    trust: { legal: -10, eng: -6 },
+                    intel: ["Over Legal's objection, you moved to pay the 4 BTC demand immediately."],
+                },
+                next: "pay_fast",
+            },
+            {
+                label: "Get ahead of it with a transparent status-page notice",
+                detail: "Tell customers the truth before the rumor mill does. The attacker reads it too.",
+                effect: { clock: 6, intel: ["You drafted a public status-page notice acknowledging a service disruption."] },
+                next: "status_now",
+            },
+        ],
+    },
+    negotiate: {
+        id: "negotiate",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sat 12:58",
+        title: "Talking to Ghosts",
+        body: [
+            "You stall. You ask for proof of the data they claim to hold. You ask for time to \"get approvals.\" And while you talk, your team quietly pulls everything they can from the connection metadata, the wallet address, the writing style.",
+            "Two things come back. One: the telemetry is genuinely useful - the C2 infrastructure and a reused wallet give law enforcement something real to chase later. Two: they can smell the stall. The reply is short. \"Approvals. Cute. It is 6 BTC now. Keep wasting our time and we publish the data and double the floods.\" They never sent proof of the data. People holding a real dump usually lead with it.",
+        ],
+        intelReveal: [
+            "Backchannel yielded usable C2 + wallet intel for law enforcement.",
+            "Demand raised to 6 BTC after the stall; still no proof of the data claim.",
+            "(unconfirmed) Lack of proof suggests the data-theft claim may be a bluff.",
+        ],
+        choices: [
+            {
+                label: "Stop talking; fold the telemetry into mitigation and the case",
+                detail: "You got what engagement was worth. Do not get drawn further in.",
+                effect: { clock: 8, caseStrength: 6, trust: { legal: 4 }, intel: ["You ended the backchannel and handed the wallet and C2 intel to the response team."] },
+                next: "war_room",
+            },
+            {
+                label: "They seem serious - authorize the payment",
+                detail: "The demand is climbing. Pay before it climbs again.",
+                effect: { clock: 5, set: ["paid"], trust: { legal: -8, eng: -4 }, intel: ["You authorized payment after the negotiation escalated."] },
+                next: "pay_fast",
+            },
+        ],
+    },
+    status_now: {
+        id: "status_now",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sat 12:49",
+        title: "The Honesty Tax",
+        body: [
+            "The notice goes up: \"We are experiencing a service disruption affecting checkout and are working to restore full service. Your data and payments are secure. Updates every 30 minutes.\" It is calm, honest, and on-brand. Customers on social media actually thank you for the transparency.",
+            "The attacker reads it too, of course. Within minutes the L7 stream intensifies - public confirmation that you are hurting is exactly the leverage they wanted. And the line \"your data is secure\" is now a hostage to fortune, because you do not actually know yet whether it is true.",
+            "The CEO likes the goodwill. Legal is staring at that one sentence.",
+        ],
+        intelReveal: [
+            "Public status notice posted; customer sentiment improved.",
+            "Attacker escalated the L7 attack after the public acknowledgment.",
+        ],
+        choices: [
+            {
+                label: "Keep comms honest and rejoin the mitigation effort",
+                detail: "Own the message, walk back the unverifiable promise, get back to the fight.",
+                effect: {
+                    clock: 6,
+                    set: ["cleanComms", "tippedWeakness"],
+                    trust: { exec: 4, legal: 2 },
+                    intel: ["You corrected the notice to avoid over-promising on data, and returned to mitigation."],
+                },
+                next: "war_room",
+            },
+            {
+                label: "Pull the notice down - it spooked the board",
+                detail: "The public confirmation is helping the attacker. Kill it.",
+                effect: {
+                    clock: 6,
+                    set: ["boardPanic", "tippedWeakness"],
+                    trust: { exec: -5, legal: -4 },
+                    intel: ["You took the status notice down. Customers noticed the reversal; trust took a knock both ways."],
+                },
+                next: "war_room",
+            },
+        ],
+    },
+    pay_fast: {
+        id: "pay_fast",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sat 13:05",
+        title: "Wire the Coin",
+        body: [
+            "Finance scrambles to source the crypto. It is less straightforward than the movies make it look, but within the hour the 4 BTC moves to the wallet in the email.",
+            "For about twenty minutes, it seems to work. The L7 stream eases. The graphs twitch toward normal. The room exhales.",
+            "Then you remember what you actually bought: a promise, from people whose entire business model is breaking promises. You have marked your company, on a public blockchain, as one that pays.",
+        ],
+        intelReveal: [
+            "4 BTC paid to the attacker wallet.",
+            "Attack volume eased shortly after payment.",
+        ],
+        choices: [
+            {
+                label: "Watch the wallet and the traffic, and brace",
+                detail: "You have paid. Now find out what kind of people you paid.",
+                effect: { clock: 35, intel: ["You held position and monitored for the attacker's next move."] },
+                next: "pay_outcome",
+            },
+        ],
+    },
+    pay_outcome: {
+        id: "pay_outcome",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sat 13:40",
+        title: "The Receipt",
+        body: [
+            "The quiet does not hold the same way for everyone.",
+            "If your team had already built real mitigation, the attack was failing before you paid, and the wallet goes silent - you will never be sure whether the money or the filters ended it, and you paid for the privilege of not knowing. If you paid from a position of weakness, with nothing actually stopping the flood, the lull was just them counting their money: a fresh email arrives. \"Good doing business. We found more. Another 4 BTC keeps it private.\"",
+            "Either way, the data question they raised has not gone anywhere, and now it is the CISO's table. The CEO wants you in the executive briefing. You are about to change seats.",
+        ],
+        intelReveal: [
+            "FINAL: payment does not resolve the data-exposure question. Outcome now depends on whether mitigation ever actually held.",
+        ],
+        choices: [
+            {
+                label: "Take it to the executive briefing",
+                detail: "Hand the strategic decisions to the CISO seat - which is now you.",
+                effect: { clock: 110, trust: { exec: -2 } },
+                next: "executive_table",
+            },
+        ],
+    },
+    war_room: {
+        id: "war_room",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sat 13:12",
+        title: "Two Fires",
+        body: [
+            "You run the bridge like a bridge. Upstream scrubbing is coming online to eat the volumetric flood; the L7 tuning race continues. It is grinding, but it is working.",
+            "Then a senior SRE says the thing that changes the shape of the day. \"I have been reading the 500s from checkout/validate. Some of them are echoing request context back in the error body - and a few of those bodies contain what look like real customer email addresses and card last-fours. I think the attack is making our own error handler leak.\" It is unconfirmed, it is buried in millions of log lines, and it might be exactly the \"data\" the attacker is bragging about.",
+            "Two fires now: the flood, and a question that could turn a bad day into a breach.",
+        ],
+        intelReveal: [
+            "Upstream scrubbing coming online against the volumetric flood.",
+            "(unconfirmed) Checkout 500 error bodies may be leaking customer email + card last-four under load.",
+        ],
+        choices: [
+            {
+                label: "Pull in the upstream ISP and scrubbing provider; concentrate engineering on the L7",
+                detail: "Win the availability fight decisively. Park the leak question for a beat.",
+                effect: {
+                    clock: 18,
+                    caseStrength: 16,
+                    dataExposure: -6,
+                    set: ["mitigationHeld"],
+                    trust: { eng: 8, exec: 6 },
+                    intel: ["Upstream scrubbing absorbed the flood and the L7 rules stabilized. The storefront is holding."],
+                },
+                next: "mitigation_holds",
+            },
+            {
+                label: "Chase the API leak now - confirm or kill the data claim",
+                detail: "Find out if the breach is real before the CISO has to speak to it.",
+                effect: {
+                    clock: 20,
+                    caseStrength: 4,
+                    set: ["foundLeak"],
+                    trust: { legal: 6 },
+                    intel: ["You tasked the team with confirming the suspected error-handler data leak."],
+                },
+                next: "investigate_leak",
+            },
+            {
+                label: "Dismiss the leak rumor; put everything on availability",
+                detail: "It is probably noise. The fire you can see is the fire you fight.",
+                effect: {
+                    clock: 10,
+                    caseStrength: 8,
+                    dataExposure: 12,
+                    set: ["ignoredLeak", "latentLeak"],
+                    trust: { eng: 2, legal: -5 },
+                    intel: ["You set the leak rumor aside and committed the whole team to availability."],
+                },
+                next: "availability_only",
+            },
+        ],
+    },
+    mitigation_holds: {
+        id: "mitigation_holds",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sat 13:48",
+        title: "The Line Holds",
+        body: [
+            "It comes together. The scrubbing center swallows the volumetric flood whole; the L7 rules finally get ahead of the mutations. Latency is flat and low. Checkout is converting. The order graph, which spent two hours flat on the floor, ticks upward and keeps going.",
+            "You have won the fight you can see. The storefront is up and defended for the rest of the sale. But the SRE's question is still sitting there, unanswered: did your own error handler hand the attacker real customer data while all this was happening?",
+        ],
+        intelReveal: [
+            "CONFIRMED: attack mitigated. Storefront stable and serving the sale.",
+            "(unconfirmed) The checkout error-leak question remains open.",
+        ],
+        choices: [
+            {
+                label: "Now circle back and verify the API leak claim",
+                detail: "The site is safe. Spend the breathing room on the data question.",
+                effect: { clock: 14, caseStrength: 2, set: ["foundLeak"], trust: { legal: 4 }, intel: ["With availability secured, you re-opened the leak investigation."] },
+                next: "investigate_leak",
+            },
+            {
+                label: "Site's up, revenue's flowing - hand the strategic call to the CISO",
+                detail: "Declare the technical incident contained. Leave the data question for the briefing.",
+                effect: {
+                    clock: 100,
+                    set: ["latentLeak"],
+                    trust: { exec: 6 },
+                    intel: ["You handed off with availability restored but the data-leak question still unverified."],
+                },
+                next: "executive_table",
+            },
+        ],
+    },
+    investigate_leak: {
+        id: "investigate_leak",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sat 13:55",
+        title: "What the 500s Were Hiding",
+        body: [
+            "The team digs into the error logs with grep and dread. The SRE was right, and it is narrower than feared. A verbose 500 handler on /api/checkout/validate - the exact endpoint the L7 attack targeted - echoes the parsed request context into its error body. Under the malformed-payload barrage, for a window of roughly forty minutes, those bodies included customer email addresses and card last-four digits. Not full PANs. Not passwords. But real PII, for a bounded set of sessions.",
+            "Crucially: it is a few thousand records at most, and there is no evidence the attacker actually scraped the error bodies at scale. Their \"we have your customer data\" was a lucky guess dressed as a fact - mostly bluff, with a real, limited exposure underneath it. Now you know exactly what you are dealing with. The question is what you do with that knowledge.",
+        ],
+        intelReveal: [
+            "CONFIRMED: checkout 500 handler leaked email + card last-four for ~40 minutes under attack.",
+            "Exposure is bounded (low thousands of records); no evidence of bulk scraping by the attacker.",
+            "The attacker's data claim is largely a bluff over a small real exposure.",
+        ],
+        choices: [
+            {
+                label: "Patch the endpoint and quantify exactly what was exposed",
+                detail: "Close the hole, scope the records, preserve the evidence. The defensible path.",
+                effect: {
+                    clock: 16,
+                    caseStrength: 10,
+                    dataExposure: -12,
+                    set: ["containedLeak", "loopedLegalEarly"],
+                    trust: { legal: 8, eng: 4 },
+                    intel: ["You patched the error handler and scoped the exposed records with Legal looped in."],
+                },
+                next: "leak_contained",
+            },
+            {
+                label: "Note it, but keep the team on the flood and patch later",
+                detail: "You know it is small. The flood is the emergency. Defer the fix.",
+                effect: {
+                    clock: 8,
+                    dataExposure: 6,
+                    set: ["latentLeak"],
+                    trust: { legal: -4 },
+                    intel: ["You documented the leak but deferred the fix, leaving the endpoint exposed."],
+                },
+                next: "executive_table",
+            },
+            {
+                label: "Hand both problems up to the CISO now",
+                detail: "Escalate with a clear picture of the leak, contained or not.",
+                effect: { clock: 92, set: ["latentLeak"], intel: ["You escalated to the CISO with the leak identified but not yet closed."] },
+                next: "executive_table",
+            },
+        ],
+    },
+    leak_contained: {
+        id: "leak_contained",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sat 14:20",
+        title: "Bluff Called",
+        body: [
+            "The fix ships in one small, ugly, beautiful pull request: the error handler now returns a generic message and an opaque reference ID, nothing else. The hole is closed. Legal has a clean scope of exactly which records were exposed and for how long. Forensics has the logs preserved.",
+            "You are now in the strongest position available to you. You know the real exposure is small and bounded, you can prove the attacker's claim is mostly bluff, and you have the receipts to back whatever the company decides to say. You hand it up to the CISO as a contained incident with eyes open, not a guess in the dark.",
+        ],
+        intelReveal: [
+            "CONFIRMED: leak patched, exposure scoped, evidence preserved.",
+            "You can now substantiate that the attacker's data claim is largely a bluff.",
+        ],
+        choices: [
+            {
+                label: "Brief the CISO on a contained incident",
+                detail: "Hand up a defensible position with the facts nailed down.",
+                effect: { clock: 70, trust: { legal: 4, exec: 4 } },
+                next: "executive_table",
+            },
+        ],
+    },
+    availability_only: {
+        id: "availability_only",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Sat 13:50",
+        title: "Tunnel Vision",
+        body: [
+            "You put every hand on the flood, and the flood is what you beat. Scrubbing comes online, the L7 race tips your way, and by mid-afternoon the storefront is serving the sale again. On the availability scoreboard, you won.",
+            "But nobody chased the SRE's warning, and the warning did not go away just because you stopped looking at it. The attacker's claim - \"we already pulled your customer data\" - is still sitting there, unrefuted and unexamined, with your own error logs holding the answer you chose not to read. You are about to brief the CISO, and the first question is going to be the one you cannot answer.",
+        ],
+        intelReveal: [
+            "Availability restored; storefront serving the sale.",
+            "(unconfirmed) The data-exposure claim was never investigated. The answer is unknown.",
+        ],
+        choices: [
+            {
+                label: "Brief the CISO with the site up and the data question open",
+                detail: "Hand up a restored service and an unanswered breach question.",
+                effect: { clock: 100, trust: { exec: 4 } },
+                next: "executive_table",
+            },
+        ],
+    },
+    // ──────────────────────────────── ACT 3 - CISO ──────────────────────────────
+    executive_table: {
+        id: "executive_table",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Sat 15:30",
+        title: "The Long Table",
+        body: [
+            "You walk into the executive briefing as the most senior security person in the building, which means the next decisions are yours to own. The CEO, the CFO, General Counsel, and a head of comms are around the table. Revenue dashboards on one screen, the extortion email on another.",
+            "The technical incident is wherever your team left it. The 18:00 deadline is ticking. General Counsel wants to talk about disclosure obligations; the CFO wants to talk about the lost sales and whether paying makes that stop; the CEO wants to know, simply, \"are we going to be in the news, and for what?\"",
+            "What you do here decides how this is remembered.",
+        ],
+        intelReveal: [
+            "Executive briefing convened; the 18:00 extortion deadline is live.",
+        ],
+        choices: [
+            {
+                label: "Hold the line: refuse the ransom, bring in the FBI/IC3, preserve everything",
+                detail: "No payment. Treat it as a crime, formally. The defensible posture.",
+                show: function (s) { return !s.flags.paid; },
+                effect: {
+                    clock: 12,
+                    set: ["lawEnforcement"],
+                    trust: { legal: 10, exec: -2 },
+                    intel: ["You refused to pay and engaged the FBI/IC3, preserving the wallet and C2 intel for them."],
+                },
+                next: "comms_decision",
+            },
+            {
+                label: "Authorize the payment to end it before the deadline",
+                detail: "The CFO's instinct: buy certainty. Make the attack stop now.",
+                show: function (s) { return !s.flags.paid; },
+                effect: { clock: 4, set: ["paid"], trust: { legal: -10, eng: -4 }, intel: ["At the executive table, you authorized payment of the ransom."] },
+                next: "pay_fast",
+            },
+            {
+                label: "You have paid - now bring in the FBI/IC3 and document everything",
+                detail: "Salvage what defensibility you can from a payment already made.",
+                show: function (s) { return s.flags.paid; },
+                effect: {
+                    clock: 12,
+                    set: ["lawEnforcement"],
+                    trust: { legal: 6, exec: -2 },
+                    intel: ["Having already paid, you reported the extortion to law enforcement and preserved the evidence."],
+                },
+                next: "comms_decision",
+            },
+            {
+                label: "Keep law enforcement out of it and move straight to messaging",
+                detail: "Less paperwork, less scrutiny, less help. Handle it in-house and quietly.",
+                effect: { clock: 6, set: ["quietPosture"], trust: { legal: -5, exec: 3 }, intel: ["You opted not to involve law enforcement and went straight to comms strategy."] },
+                next: "comms_decision",
+            },
+        ],
+    },
+    comms_decision: {
+        id: "comms_decision",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Sat 16:15",
+        title: "What the World Gets Told",
+        body: [
+            "The attack is handled, one way or another. What remains is the decision that outlives the incident: what you tell customers and regulators about the data the attacker claimed - and may, in a small and real way, have touched.",
+            "General Counsel lays out the band: full proactive notice, the legal minimum disclosed quietly, or nothing at all on the argument that no breach is provable. The right answer depends entirely on what you actually know about that error-handler leak - and on whether you are willing to stand behind a silence if the facts ever surface.",
+        ],
+        onEnter: function (s) {
+            if (s.flags.containedLeak) {
+                return { intel: ["FINAL: you can speak to the exposure precisely - scoped, patched, and evidenced. You are deciding from knowledge."] };
+            }
+            if (s.flags.foundLeak || s.flags.latentLeak || s.flags.ignoredLeak || s.flags.paid) {
+                return { intel: ["FINAL: a real but unquantified exposure exists and you never closed or scoped it. You are deciding in the dark."] };
+            }
+            return { intel: ["FINAL: the data question was never examined. You are deciding on a hope."] };
+        },
+        choices: [
+            {
+                label: "Proactively notify affected customers and regulators",
+                detail: "Transparent, costly, and defensible. Get ahead of it on your own terms.",
+                effect: { clock: 30, set: ["properDisclosure", "cleanComms"], trust: { legal: 8, exec: -6 } },
+                next: function (s) { return resolveDdosEnding(s, "proactive"); },
+            },
+            {
+                label: "Disclose the legal minimum, quietly, as late as allowed",
+                detail: "Limit the blast radius. General Counsel's nervous compromise.",
+                effect: { clock: 20, trust: { exec: 5, legal: -2 } },
+                next: function (s) { return resolveDdosEnding(s, "minimal"); },
+            },
+            {
+                label: "Disclose nothing - argue it was a failed DDoS with no proven data loss",
+                detail: "Only defensible if you truly contained it. Otherwise a gamble against the facts.",
+                effect: { clock: 15, trust: { exec: 7 } },
+                next: function (s) { return resolveDdosEnding(s, "none"); },
+            },
+        ],
+    },
+    // ──────────────────────────────── ENDINGS ───────────────────────────────────
+    ending_textbook: {
+        id: "ending_textbook",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Clean Shift",
+        isEnding: true,
+        endingTitle: "Outcome: A Clean Shift",
+        endingTone: "win",
+        body: [
+            "You read the attack instead of swinging at it, mitigated without locking your own customers out, found the one real piece of exposure buried in the noise and closed it, refused to fund the people doing this, and told the truth about what happened on your own terms.",
+            "The sale finishes strong. The attacker's wallet is now an FBI problem. The customer notice goes out narrow, accurate, and early, and reads like a company in control rather than one caught out. The board hears a story about a team that fought two fires at once and put both out.",
+            "Nobody outside the room will know how close the data question came to going the other way. That is what winning looks like here: a sale that closed, a breach that did not, and a Monday that is merely busy.",
+        ],
+    },
+    ending_held_messy: {
+        id: "ending_held_messy",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Held, Barely",
+        isEnding: true,
+        endingTitle: "Outcome: You Held the Line, But It Cost You",
+        endingTone: "mixed",
+        body: [
+            "The storefront survived the day and the company is not a cautionary headline. But the path here was rougher than it needed to be. Somewhere you spent trust you did not have to spend, or left a question half-answered, or leaned on a blunt instrument when a precise one was within reach.",
+            "The incident closes as a win in the metrics that leadership watches - the sale converted, the site stayed up - and a draw in the ones you watch. There are runbooks to rewrite and a couple of conversations to have about the calls that were closer than they should have been.",
+            "A win. Just not the kind you put in the awareness deck.",
+        ],
+    },
+    ending_paid_worked: {
+        id: "ending_paid_worked",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "It Stopped",
+        isEnding: true,
+        endingTitle: "Outcome: You Paid, and It Stopped",
+        endingTone: "mixed",
+        body: [
+            "The attack ended and the sale was salvaged, and for a while that is the only fact anyone at the table cares about. You will never know whether the money ended it or your own mitigation did, because you did both, and the attacker was happy to take credit and your coin.",
+            "What you bought is real and so is its price. Your company is now on a list, written in the immutable ink of a public blockchain, of organizations that pay. The next crew will know it. The board will remember that paying worked, which is exactly the lesson you did not want them to learn.",
+            "It stopped. That is not the same as it being over.",
+        ],
+    },
+    ending_paid_returned: {
+        id: "ending_paid_returned",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "They Came Back",
+        isEnding: true,
+        endingTitle: "Outcome: You Paid, and They Came Back",
+        endingTone: "loss",
+        body: [
+            "You paid from a position of weakness - nothing of yours was actually stopping the attack - and people who extort for a living can tell the difference. The lull lasted exactly as long as it took them to draft the next email. The demand came back higher, and the floods came back with it.",
+            "Now you are out the money, still down, and negotiating from a hole you dug deeper with your own wallet. The CFO who wanted certainty got the opposite. Whatever you tell customers now competes with the attacker's version, and the attacker has your coin to fund the telling.",
+            "The only thing a ransom guarantees is that they know you will pay one.",
+        ],
+    },
+    ending_down_all_day: {
+        id: "ending_down_all_day",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Dark All Day",
+        isEnding: true,
+        endingTitle: "Outcome: The Sale That Never Happened",
+        endingTone: "loss",
+        body: [
+            "You never got control of the attack. You fed it capacity, or you swung blunt instruments that missed, or you simply never characterized what you were fighting - and a smart L7 operator does not lose to a team that is guessing. The storefront stayed effectively dark through the highest-revenue hours of the year.",
+            "The number that matters is the one on the CFO's screen: a full sale day, gone, with the cloud bill from your scaling experiment stacked on top of the lost revenue. Customers who could not check out went to competitors who could. Some of them will not come back.",
+            "The attacker did not even need the data threat. You beat yourself on availability alone.",
+        ],
+    },
+    ending_overblocked: {
+        id: "ending_overblocked",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Cure Worse Than the Disease",
+        isEnding: true,
+        endingTitle: "Outcome: You Blocked the Attack, and Everyone Else",
+        endingTone: "loss",
+        body: [
+            "Your infrastructure dashboards are a wall of green, and they have been all day. That is the problem. You defeated the attack by challenging every human who came near the site, and you never refined it, so for the whole of the Spring Sale your most loyal customers met a CAPTCHA they could not pass and your mobile app showed a blank screen.",
+            "The origin was never in danger because nothing reached it - not the botnet, not the buyers. On paper, uptime was excellent. In reality, you ran a self-inflicted outage and called it a defense. The attacker spent a few dollars on a booter and got you to close your own store for them.",
+            "Availability of the servers is not the same as availability of the business. Today the difference cost you the day.",
+        ],
+    },
+    ending_leak_public: {
+        id: "ending_leak_public",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "The Part You Buried",
+        isEnding: true,
+        endingTitle: "Outcome: The Breach You Chose Not to Find",
+        endingTone: "loss",
+        body: [
+            "The DDoS was always the loud part. The quiet part was a leaky error handler bleeding customer email and card last-fours, and you decided - by dismissing it, by deferring it, or by paying so fast you never looked - not to find out how bad it was. Then you told the world there was nothing to tell.",
+            "It does not stay buried. The exposure was small, which means the breach was survivable; the silence was a choice, which means the story is not about a clever attacker but about a company that looked away. When the records surface, a regulator asks the only question that matters - when did you know, and what did you do to check - and \"we were busy with the DDoS\" is not an answer that improves with retelling.",
+            "The attack was a bad day. Choosing not to look is what becomes the case study.",
+        ],
+    },
+};
+// Decide which ending a disclosure choice leads to, from final state.
+// `s` here is the live post-effect state that becomes the next state, so flags
+// set here intentionally persist into the after-action report.
+function resolveDdosEnding(s, disclosure) {
+    const dataOut = !s.flags.containedLeak &&
+        (s.flags.latentLeak || s.flags.ignoredLeak || s.flags.paid || s.dataExposure >= 50);
+    const siteHealthy = s.flags.mitigationHeld || s.caseStrength >= 60;
+
+    // Self-inflicted outage: blunt blocking that never got refined, customers shut out all day.
+    if (s.flags.overblocked && !s.flags.preciseMitigation && s.dataExposure >= 55) {
+        return "ending_overblocked";
+    }
+    // Never regained availability: fed the attack or swung blind, and did not pay your way out.
+    if (!siteHealthy && !s.flags.preciseMitigation && !s.flags.mitigationHeld && !s.flags.paid && s.caseStrength < 45) {
+        return "ending_down_all_day";
+    }
+    // Paid the extortion.
+    if (s.flags.paid) {
+        // Paid from weakness, with nothing actually stopping the attack: they smell blood and return.
+        if (!s.flags.preciseMitigation && !s.flags.mitigationHeld) {
+            return "ending_paid_returned";
+        }
+        // Paid from strength but then buried a real exposure: the silence is the story.
+        if (dataOut && disclosure === "none") {
+            s.flags.recklessNoDisclosure = true;
+            return "ending_leak_public";
+        }
+        return "ending_paid_worked";
+    }
+    // Real exposure left unaddressed, and you chose to say nothing: it surfaces later.
+    if (dataOut && disclosure === "none") {
+        s.flags.recklessNoDisclosure = true;
+        return "ending_leak_public";
+    }
+    // Clean: held the line, closed the leak, refused to pay, engaged law enforcement,
+    // disclosed responsibly, and kept the room with you.
+    if (siteHealthy && s.flags.containedLeak && !s.flags.paid && s.flags.lawEnforcement &&
+        disclosure !== "none" && avgOk(s)) {
+        return "ending_textbook";
+    }
+    // Otherwise: you held it, but it was messy.
+    return "ending_held_messy";
+}
+function avgOk(s) {
+    return (s.trust.legal + s.trust.eng + s.trust.exec) / 3 >= 48;
+}
+function scoreAdjust(s) {
+    let delta = 0;
+    const wins = [];
+    const losses = [];
+    const avg = (s.trust.legal + s.trust.eng + s.trust.exec) / 3;
+    if (s.flags.characterized)
+        delta += 3;
+    if (s.flags.preciseMitigation)
+        delta += 8;
+    if (s.flags.mitigationHeld)
+        delta += 7;
+    if (s.flags.containedLeak)
+        delta += 6;
+    if (s.flags.lawEnforcement)
+        delta += 4;
+    if (s.flags.scaledIntoIt)
+        delta -= 6;
+    if (s.flags.overblocked && !s.flags.preciseMitigation)
+        delta -= 8;
+    if (s.flags.paid)
+        delta -= 10;
+    if (s.flags.recklessNoDisclosure)
+        delta -= 12;
+    if (s.flags.ignoredLeak && !s.flags.containedLeak)
+        delta -= 6;
+    if (s.flags.characterized)
+        wins.push("You characterized the attack before reacting, instead of swinging blind.");
+    if (s.flags.preciseMitigation)
+        wins.push("You mitigated with surgical filters that kept real customers flowing.");
+    if (s.flags.mitigationHeld)
+        wins.push("You absorbed the flood with upstream scrubbing and kept the platform up.");
+    if (s.flags.containedLeak)
+        wins.push("You found and closed the real data exposure, and proved the rest was a bluff.");
+    if (s.flags.lawEnforcement)
+        wins.push("You treated the extortion as a crime and engaged law enforcement.");
+    if (s.flags.cleanComms)
+        wins.push("Your customer communications were honest and timely.");
+    if (s.flags.scaledIntoIt)
+        losses.push("You autoscaled into the attack, handing the L7 flood more capacity to burn.");
+    if (s.flags.overblocked && !s.flags.preciseMitigation)
+        losses.push("Your blunt block-everything posture shut out paying customers along with the attack.");
+    if (s.flags.paid)
+        losses.push("You paid the extortion, funding the crew and marking the company as one that pays.");
+    if (s.flags.recklessNoDisclosure)
+        losses.push("You buried a real data exposure rather than disclose it. That choice ages badly.");
+    if (s.flags.ignoredLeak && !s.flags.containedLeak)
+        losses.push("You waved off the data-leak signal and never verified what left.");
+    if (s.flags.tippedWeakness && !s.flags.mitigationHeld)
+        losses.push("You signaled the attack was hurting, and the attackers leaned harder.");
+    if (avg < 45)
+        losses.push("Stakeholder trust frayed. The next call will be harder to make.");
+    return { delta: delta, wins: wins, losses: losses };
+}
+return {
+    meta: {
+        id: "ddos",
+        title: "Peak Hour",
+        codename: "DDoS Extortion",
+        blurb: "A multi-vector flood hits your store on its biggest sale day, then the ransom note arrives. Keep the lights on, call the bluff, and decide what the world gets told.",
+        premise: "A multi-vector DDoS detonates against your storefront at the start of the year's biggest sale, followed by an extortion demand and a claim that your customer data is already gone. You will work it from three seats as it escalates: analyst, then commander, then CISO. The revenue clock is loud, the data claim is fog, and every minute of downtime has a price tag.",
+        difficulty: "Standard",
+        accent: "emerald",
+        tags: ["DDoS", "Extortion", "Disclosure"],
+        acts: 3,
+    },
+    firstScene: "start",
+    initialState: function () {
+        return {
+            scene: "start",
+            clock: 0,
+            caseStrength: 45,
+            dataExposure: 28,
+            trust: { legal: 60, eng: 60, exec: 55 },
+            flags: {},
+            intel: [],
+            log: [],
+        };
+    },
+    scenes: SCENES,
+    meterLabels: {
+        primary1: "Service Health",
+        primary2: "Customer Impact",
+        s1: "Legal",
+        s2: "Engineering",
+        s3: "Executive",
+    },
+    scoreAdjust: scoreAdjust,
+};
+})();
+
+const otScenario = (function () {
+"use strict";
+/**
+ * Scenario: "Safe State"
+ * A physical intruder reaches the OT network of a municipal water-treatment plant
+ * and plants a cellular implant. You work it from three seats:
+ *   Act 1  - SOC Analyst         (the alert)
+ *   Act 2  - Incident Commander  (the hunt)
+ *   Act 3  - CISO                (the public)
+ *
+ * Ground truth: after hours, a recon operator tailgates in on a cloned contractor
+ * badge, plants an LTE-beaconing implant in a comms cabinet, and probes the HMI that
+ * sets chemical dosing. They have NOT yet altered a setpoint, but they could, and the
+ * implant is a persistent remote foothold that survives the person leaving. There is a
+ * genuine vendor maintenance window scheduled tonight (the fog). The danger is the
+ * implant, not the person. On OT, an IT instinct - isolate, cut, wipe - can be the
+ * unsafe move: severing the network can trip a live process a town drinks from.
+ */
+const SCENES = {
+    // ───────────────────────────── ACT 1 - SOC ANALYST ──────────────────────────
+    ot_start: {
+        id: "ot_start",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Wed 02:14",
+        title: "After Hours",
+        body: [
+            "It is 02:14. The plant runs lights-out overnight, one operator watching the boards. You are on the SOC night desk when the IT/OT boundary sensor throws an alert it almost never throws: a device with an unrecognized MAC has appeared on the OT VLAN - the flat, fragile network carrying the controllers for the treatment process - and it is sweeping, ARP and port scans walking toward the HMI that sets chemical dosing.",
+            "A second later the badge system corroborates the bad feeling: a contractor badge entered the process floor 41 minutes ago. There is a vendor maintenance window on tonight's calendar, which is either the most reassuring fact available or the cover that makes this work.",
+            "The OT network was built for reliability, not security. There is no EDR on a twelve-year-old PLC. What you do next you do mostly blind, on a network where the wrong move trips a process a town drinks from.",
+        ],
+        intelReveal: [
+            "Unknown device on the OT VLAN, scanning toward the chemical-dosing HMI.",
+            "(unconfirmed) Contractor badge entry to the process floor 41 minutes ago.",
+            "(unconfirmed) A vendor maintenance window is scheduled for tonight.",
+        ],
+        choices: [
+            {
+                label: "Pull the OT sensor and badge logs and build the picture before touching the network",
+                detail: "Know what you are fighting. On OT, a blind swing can trip the process.",
+                effect: { clock: 16, caseStrength: 6, set: ["characterized"], intel: ["You began correlating OT sensor data with badge and camera logs."] },
+                next: "ot_characterize",
+            },
+            {
+                label: "Block the OT VLAN at the IT/OT firewall immediately",
+                detail: "Cut the intruder off. On OT, it also cuts the operator's visibility.",
+                effect: {
+                    clock: 4,
+                    caseStrength: -12,
+                    dataExposure: -6,
+                    set: ["bluntCut"],
+                    trust: { eng: -8 },
+                    intel: ["You severed the IT/OT boundary. The intruder's path dropped - and so did operator telemetry; a control loop faulted to a default."],
+                },
+                next: "ot_blunt_isolate",
+            },
+            {
+                label: "Call the night operator and ask what is actually running",
+                detail: "Put a human who knows the process in the loop. Costs a phone call.",
+                effect: { clock: 8, caseStrength: 4, set: ["characterized"], trust: { eng: 5 }, intel: ["You called the shift operator to confirm plant state."] },
+                next: "ot_call_ops",
+            },
+            {
+                label: "Remote-disable the switch port the device is on",
+                detail: "Kill its link now. You also blind yourself to it, and maybe unplug a real vendor.",
+                effect: {
+                    clock: 5,
+                    dataExposure: -4,
+                    set: ["killedPort"],
+                    trust: { eng: -3 },
+                    intel: ["You disabled the switch port. The device's wired link dropped; no evidence was captured, and a maintenance laptop may have gone dark with it."],
+                },
+                next: "ot_kill_port",
+            },
+        ],
+    },
+    ot_characterize: {
+        id: "ot_characterize",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Wed 02:30",
+        title: "Not a Maintenance Window",
+        body: [
+            "The device is on no vendor asset list, and its traffic is wrong for maintenance: no connection to the historian it would patch, just methodical scanning of the dosing HMI and the safety PLC. And it is beaconing - small, regular packets to a cellular gateway, the signature of an implant phoning home over LTE, independent of your network entirely.",
+            "That changes the shape of the threat. The person who carried it in is almost incidental. The danger is the box they left behind, which can let someone reach into your process from anywhere, long after they have driven away.",
+        ],
+        intelReveal: [
+            "CONFIRMED: device is not a known vendor asset; behavior is reconnaissance, not maintenance.",
+            "CONFIRMED: device is beaconing to a cellular gateway - a persistent remote foothold.",
+            "The real threat is the implant, not the person who planted it.",
+        ],
+        choices: [
+            {
+                label: "Verify the dosing setpoints are unchanged and put the process in known-safe local control",
+                detail: "Make the process un-steerable from the network, whatever happens next.",
+                effect: { clock: 14, caseStrength: 18, set: ["safeState"], trust: { eng: 8 }, intel: ["With the operator, you verified setpoints and shifted dosing to local manual control."] },
+                next: "ot_safe_state",
+            },
+            {
+                label: "Call the operator to confirm nothing physical has changed",
+                detail: "Get eyes on the actual plant before you escalate.",
+                effect: { clock: 8, caseStrength: 6, set: ["characterized"], trust: { eng: 4 } },
+                next: "ot_call_ops",
+            },
+            {
+                label: "Escalate to the on-call incident commander with a clean characterization",
+                detail: "Hand up a clear picture. The process is still steerable from the network.",
+                effect: { clock: 6, caseStrength: 2, trust: { exec: 3 } },
+                next: "ot_command",
+            },
+        ],
+    },
+    ot_call_ops: {
+        id: "ot_call_ops",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Wed 02:26",
+        title: "The Night Operator",
+        body: [
+            "Dale has run these boards for nineteen years and does not love being asked if everything is normal at two in the morning. Then he checks. \"...Huh. Dosing controller threw a comms fault about twenty minutes ago and cleared itself. And no, nobody told me about a vendor tonight. There is nobody on my floor.\"",
+            "A comms fault on the controller that meters chemicals into drinking water, at the same moment an unknown device is scanning it, with no authorized human present. The maintenance-window theory just died.",
+        ],
+        intelReveal: [
+            "Operator confirms no authorized vendor on the floor and an unexplained dosing-controller comms fault.",
+        ],
+        choices: [
+            {
+                label: "Have Dale switch dosing to local manual control and verify every setpoint",
+                detail: "Take the process off the network's leash. The strongest move you have.",
+                effect: { clock: 12, caseStrength: 18, set: ["safeState"], trust: { eng: 8 }, intel: ["Dale moved dosing to local manual control and verified setpoints against the logbook."] },
+                next: "ot_safe_state",
+            },
+            {
+                label: "Escalate to the incident commander now",
+                detail: "Hand it up with the intrusion corroborated.",
+                effect: { clock: 6, trust: { exec: 2 } },
+                next: "ot_command",
+            },
+        ],
+    },
+    ot_blunt_isolate: {
+        id: "ot_blunt_isolate",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Wed 02:19",
+        title: "The Network Goes Dark",
+        body: [
+            "You drop the firewall rule and the OT VLAN goes silent. The intruder's scanning stops - and so does the telemetry the operator relies on. A control loop trimming a pump against a historian feed loses its input and faults to a default; a tank level starts drifting and an alarm goes off on Dale's board. He is now flying partially blind on a live process because you cut the wrong thing.",
+            "This is the OT lesson, learned the hard way: the IT instinct to isolate and contain can be the dangerous move here. The intruder may be off the network. So is your safety margin.",
+        ],
+        intelReveal: [
+            "OT segment severed; intruder's path cut, but operator telemetry lost and a control loop faulted.",
+            "(unconfirmed) The implant's cellular beacon is unaffected by the network cut.",
+        ],
+        choices: [
+            {
+                label: "Coordinate with the operator to fail safe to local control, then escalate",
+                detail: "Stabilize the process you just destabilized.",
+                effect: { clock: 14, caseStrength: 16, set: ["safeState"], trust: { eng: 2 }, intel: ["You walked the operator through failing the process to safe local control."] },
+                next: "ot_safe_state",
+            },
+            {
+                label: "Escalate to the IC with the segment cut and the operator scrambling",
+                detail: "Hand up a contained network and an unstable process.",
+                effect: { clock: 6, caseStrength: -4, trust: { eng: -6, exec: -3 } },
+                next: "ot_command",
+            },
+        ],
+    },
+    ot_kill_port: {
+        id: "ot_kill_port",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Wed 02:22",
+        title: "Unplugged",
+        body: [
+            "The port goes down and the device's wired link with it. If that was the implant, you have stopped its on-network scanning - though its cellular beacon, if it has one, does not care about your switch. If that was the vendor's laptop, you have just yanked a contractor mid-task and have an awkward call coming. Either way you captured nothing: no packet capture, no device image, no chain of custody. Just a dark port and a guess.",
+        ],
+        intelReveal: [
+            "Switch port disabled; on-network activity stopped, no evidence preserved.",
+            "(unconfirmed) Device may retain a cellular path independent of the wired link.",
+        ],
+        choices: [
+            {
+                label: "Characterize what you just disconnected and check the process state",
+                detail: "Find out if that was the threat or a bystander - and whether the process is safe.",
+                effect: { clock: 12, caseStrength: 6, set: ["characterized"] },
+                next: "ot_characterize",
+            },
+            {
+                label: "Escalate to the incident commander",
+                detail: "Hand it up; the link is down, the picture is not.",
+                effect: { clock: 6, trust: { exec: -2 } },
+                next: "ot_command",
+            },
+        ],
+    },
+    ot_safe_state: {
+        id: "ot_safe_state",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Wed 02:46",
+        title: "Off the Leash",
+        body: [
+            "Dale has the process in local manual, setpoints verified against the paper logbook, dosing steady and exactly where it should be. Whatever the intruder or their implant tries across the network now, it cannot move a milligram of chemical without a human at the panel seeing it and refusing.",
+            "The process is safe. That is the thing that mattered most, and you have it. The network intrusion and the implant are now problems you can work without a clock made of public health ticking behind them.",
+        ],
+        intelReveal: [
+            "CONFIRMED: process in verified-safe local manual control. Setpoints cannot be moved from the network undetected.",
+        ],
+        choices: [
+            {
+                label: "Hand off to the incident commander with the process secured",
+                detail: "Give the commander a safe plant and an open hunt.",
+                effect: { clock: 8, caseStrength: 4, trust: { eng: 4, exec: 4 } },
+                next: "ot_command",
+            },
+        ],
+    },
+    // ─────────────────────────── ACT 2 - INCIDENT COMMANDER ──────────────────────
+    ot_command: {
+        id: "ot_command",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed 03:05",
+        title: "The Bridge",
+        body: [
+            "You stand up a bridge: plant operations, physical security, your security team, and a plant manager you just woke up. Three threads are live at once. The process - is it safe and will it stay that way. The implant - a possible cellular foothold sitting in your OT space right now. And the person - are they still in the building, and who are they.",
+            "Physical security is pulling camera footage. Everyone wants a decision, and the easy decisions are the dangerous ones.",
+        ],
+        intelReveal: [
+            "Incident bridge convened: process, implant, and intruder tracked in parallel.",
+        ],
+        choices: [
+            {
+                label: "Run all three in parallel: hold the process safe, hunt the implant, locate the person",
+                detail: "Disciplined. Nobody fixates, nothing gets dropped.",
+                effect: { clock: 10, set: ["parallelTracks"], trust: { eng: 5, exec: 2 }, intel: ["You assigned parallel tracks for process, implant, and intruder."] },
+                next: "ot_war_room",
+            },
+            {
+                label: "Have security detain anyone they find on the floor right now",
+                detail: "Catch them in the act - if there is anyone left to catch.",
+                effect: { clock: 8, set: ["confrontPushed"], trust: { exec: 2 }, intel: ["You ordered security to sweep and detain anyone on the process floor."] },
+                next: "ot_confront",
+            },
+            {
+                label: "Bring the whole plant to a safe shutdown to remove all doubt",
+                detail: "Maximum safety: a public water advisory, real cost, and maybe an overreaction.",
+                effect: { clock: 12, caseStrength: 10, set: ["fullShutdown"], trust: { eng: -4, exec: -6, legal: -3 }, intel: ["You initiated a precautionary full plant shutdown, triggering public-advisory obligations."] },
+                next: "ot_full_shutdown",
+            },
+            {
+                label: "Hold position and quietly observe the intruder to learn more",
+                detail: "Intel is tempting. So is the risk of watching them act.",
+                effect: { clock: 10, dataExposure: 6, set: ["watching"], trust: { legal: -3 }, intel: ["You chose to observe the intruder rather than act, to gather intelligence."] },
+                next: "ot_watch",
+            },
+        ],
+    },
+    ot_war_room: {
+        id: "ot_war_room",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed 03:30",
+        title: "The Cabinet",
+        body: [
+            "Camera footage tells the story. A masked figure, gloved, in at 01:33, straight to a comms cabinet on the process floor, ninety seconds at the panel, out by 01:39. No fumbling - they knew exactly which cabinet. They left a long time ago. They left something behind.",
+            "Network forensics confirms it: the beacon to the cellular gateway is alive and originates from that cabinet. The intruder is gone and almost irrelevant. The implant is here, it is talking to the outside, and as long as it lives, so does their way back in.",
+        ],
+        intelReveal: [
+            "CONFIRMED: intruder left at 01:39 after ninety seconds at a comms cabinet.",
+            "CONFIRMED: a cellular implant in the cabinet is actively beaconing to an external gateway.",
+        ],
+        choices: [
+            {
+                label: "Physically find and remove the implant, bag it as evidence, and confirm the foothold is dead",
+                detail: "Kill the actual threat and preserve it for the investigation.",
+                effect: {
+                    clock: 18,
+                    caseStrength: 8,
+                    dataExposure: -22,
+                    set: ["implantRemoved", "evidencePreserved"],
+                    trust: { eng: 6, legal: 4 },
+                    intel: ["You located the implant in the comms cabinet, removed and bagged it, and verified the beacon went dark with no backup path active."],
+                },
+                next: "ot_kill_implant",
+            },
+            {
+                label: "Block the beacon at the boundary and monitor, leaving the device in place",
+                detail: "Cut its voice without touching it. It may have a path you cannot see.",
+                effect: { clock: 10, dataExposure: -10, set: ["beaconBlocked"], trust: { eng: 2 }, intel: ["You blocked the cellular gateway range at the boundary; the active beacon stopped, the device stayed in place."] },
+                next: "ot_block_beacon",
+            },
+            {
+                label: "The intruder is gone - declare it contained and hand up to the CISO",
+                detail: "Close it out. The person left, the scan stopped. Surely that is enough.",
+                effect: { clock: 6, dataExposure: 8, set: ["latentImplant"], trust: { legal: -5 }, intel: ["You declared containment on the intruder's departure, leaving the implant in place and live."] },
+                next: "ot_premature",
+            },
+        ],
+    },
+    ot_confront: {
+        id: "ot_confront",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed 03:20",
+        title: "Wrong Collar",
+        body: [
+            "Security sweeps the floor and comes back with someone: a startled field technician from your actual maintenance vendor, badged in for the legitimate window, who has been in an electrical room the whole time and has no idea why he is being detained. The masked figure who planted the implant left over an hour ago and is not coming back to be caught.",
+            "You have a frightened contractor, a vendor account manager now awake and furious, and the real device still in its cabinet, beaconing. The confrontation cost you time and goodwill and caught the wrong person.",
+        ],
+        intelReveal: [
+            "Detained individual is a legitimate vendor technician; the real intruder is long gone.",
+            "The implant remains in place and active.",
+        ],
+        choices: [
+            {
+                label: "Release him, apologize, and get back to the actual threat",
+                detail: "Refocus on the implant you should have been chasing.",
+                effect: { clock: 10, set: ["confrontedWrong"], trust: { eng: -5, exec: -4, legal: -3 }, intel: ["You released the technician and redirected to the implant."] },
+                next: "ot_war_room",
+            },
+        ],
+    },
+    ot_full_shutdown: {
+        id: "ot_full_shutdown",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed 03:25",
+        title: "Scram",
+        body: [
+            "You bring the plant down to a safe state across the board. Pumps off, dosing stopped, process parked. It is unambiguously safe now - nothing the intruder reaches can hurt anyone because nothing is running. The cost arrives immediately: regulators must be notified, a precautionary public advisory goes out, the town wakes up to bottled-water headlines, and restart will take the better part of a day.",
+            "Safe, beyond argument. Whether it was necessary for a recon implant that never moved a setpoint is a question you will be answering for weeks. The implant, by the way, is still in its cabinet.",
+        ],
+        intelReveal: [
+            "Plant brought to precautionary full shutdown; public advisory and regulatory notification triggered.",
+            "The implant remains in place; the shutdown addressed the process, not the foothold.",
+        ],
+        choices: [
+            {
+                label: "Now deal with the implant and the foothold",
+                detail: "Safety is handled. The intruder's door is not.",
+                effect: { clock: 14, trust: { eng: 2 } },
+                next: "ot_war_room",
+            },
+        ],
+    },
+    ot_watch: {
+        id: "ot_watch",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed 03:28",
+        title: "Letting It Run",
+        body: [
+            "You hold back and watch, and for a while it pays: you capture the implant's beacon pattern, the gateway it talks to, a set of indicators law enforcement will want. Then the thing you risked happens. Sensing no resistance, the operator on the other end gets bolder and reaches for the dosing HMI - and you watch, in real time, a chemical setpoint begin to change on a plant serving drinking water.",
+        ],
+        intelReveal: [
+            "Surveillance captured useful C2 indicators for law enforcement.",
+            "CONFIRMED: the attacker is now actively attempting to alter a chemical dosing setpoint.",
+        ],
+        choices: [
+            {
+                label: "Cut it now - pull the implant and get the operator to verify the setpoint",
+                detail: "The intel is not worth a dosing excursion. Move.",
+                effect: {
+                    clock: 8,
+                    caseStrength: 6,
+                    dataExposure: -20,
+                    set: ["implantRemoved", "evidencePreserved"],
+                    trust: { eng: 4 },
+                    intel: ["You moved immediately: implant removed and bagged, operator slammed dosing to manual and confirmed the setpoint."],
+                },
+                next: "ot_kill_implant",
+            },
+            {
+                label: "Hold a moment longer to capture the full attack",
+                detail: "You are so close to mapping them completely. The setpoint is moving.",
+                effect: {
+                    clock: 6,
+                    caseStrength: -26,
+                    dataExposure: 10,
+                    set: ["processTripped"],
+                    trust: { eng: -10, exec: -8, legal: -6 },
+                    intel: ["You held too long. The setpoint moved before the operator caught it - a brief dosing excursion occurred."],
+                },
+                next: "ot_safety_trip",
+            },
+        ],
+    },
+    ot_safety_trip: {
+        id: "ot_safety_trip",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed 03:40",
+        title: "The Setpoint Moved",
+        body: [
+            "Dale catches it eight seconds too late and slams the process to manual, but the dosing pump did what it was told for those eight seconds, and a slug of overdosed water is now somewhere in the distribution header. It is almost certainly below any harm threshold. \"Almost certainly\" is not a phrase you get to use about a town's drinking water without a mandatory report and a do-not-drink advisory while you prove it.",
+            "You have your intelligence. You also have a public-safety event that did not have to happen, caused in part by your own decision to keep watching.",
+        ],
+        intelReveal: [
+            "CONFIRMED: a dosing excursion reached the distribution system; a precautionary public advisory is required.",
+        ],
+        choices: [
+            {
+                label: "Pull the implant and escalate the whole mess to the CISO",
+                detail: "Contain what is left and own what happened.",
+                effect: { clock: 10, dataExposure: -15, set: ["implantRemoved", "evidencePreserved"] },
+                next: "ot_exec",
+            },
+        ],
+    },
+    ot_kill_implant: {
+        id: "ot_kill_implant",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed 03:55",
+        title: "Foothold Closed",
+        body: [
+            "The implant comes out of the cabinet: a small board with a cellular modem and a magnet, exactly the kind of thing left behind by people who plan to come back without coming back. Bagged, photographed, logged. The beacon is dead and no secondary path lights up. Their way in is gone, and you are holding the evidence that proves what it was.",
+            "Process safe, foothold closed, evidence in hand. This is the position you want to be in when you walk into the morning briefing.",
+        ],
+        intelReveal: [
+            "CONFIRMED: implant removed, foothold closed, evidence preserved with chain of custody.",
+        ],
+        choices: [
+            {
+                label: "Hand the contained incident to the CISO",
+                detail: "Brief up from a position of strength.",
+                effect: { clock: 10, trust: { exec: 4, legal: 4 } },
+                next: "ot_exec",
+            },
+        ],
+    },
+    ot_block_beacon: {
+        id: "ot_block_beacon",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed 03:50",
+        title: "Muted, Not Removed",
+        body: [
+            "Blocking the gateway range works, after a fashion: the beacon stops, the active session dies. But the device is still bolted in that cabinet, and you are trusting that it has no second SIM, no fallback frequency, no dormant timer you have not seen. You silenced it without ever holding it. The uncertainty rides along with you into the briefing.",
+        ],
+        intelReveal: [
+            "Beacon blocked at the boundary; implant left in place. Residual uncertainty about backup paths.",
+        ],
+        choices: [
+            {
+                label: "Hand off to the CISO with the beacon blocked and the device still in place",
+                detail: "Brief up an incident that is mostly, not provably, closed.",
+                effect: { clock: 10, trust: { exec: 2 } },
+                next: "ot_exec",
+            },
+        ],
+    },
+    ot_premature: {
+        id: "ot_premature",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed 03:45",
+        title: "Case Closed (You Hope)",
+        body: [
+            "You write it up as contained: intruder entered, scanned, left; access cut; no harm done. It reads cleanly in the ticket. It is also wrong in the one way that matters, because the implant the masked figure actually came to plant is still in its cabinet, still capable of reaching the outside, patiently waiting for the attention you just declared the incident no longer needed.",
+        ],
+        intelReveal: [
+            "Incident marked contained on the intruder's departure; the live implant remains in place, unaddressed.",
+        ],
+        choices: [
+            {
+                label: "Brief the CISO that it is handled",
+                detail: "Hand up a closed case built on a missed device.",
+                effect: { clock: 8, trust: { exec: 3 } },
+                next: "ot_exec",
+            },
+        ],
+    },
+    // ──────────────────────────────── ACT 3 - CISO ──────────────────────────────
+    ot_exec: {
+        id: "ot_exec",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Wed 07:30",
+        title: "The Morning Briefing",
+        body: [
+            "By morning you are the senior security voice in a room with the plant manager, the COO, General Counsel, and a head of public affairs who keeps glancing at the local news feed. This was an intrusion into critical infrastructure that serves a town. The questions are sharp: was anyone's water actually affected, is the attacker truly out, and who do we have to tell.",
+            "How you handle the outside world now - regulators, law enforcement, the public - is what this becomes.",
+        ],
+        intelReveal: [
+            "Executive briefing convened on a confirmed critical-infrastructure intrusion.",
+        ],
+        choices: [
+            {
+                label: "Report to the FBI and the state drinking-water regulator, and hand over the preserved implant",
+                detail: "Treat it as the critical-infrastructure crime it is. The defensible posture.",
+                effect: { clock: 12, set: ["lawEnforcement"], trust: { legal: 10, exec: -2 }, intel: ["You engaged the FBI and the state water regulator and turned over the implant as evidence."] },
+                next: "ot_disclosure",
+            },
+            {
+                label: "Notify the regulator as required but keep law enforcement at arm's length",
+                detail: "Meet the legal minimum, avoid the federal spotlight.",
+                effect: { clock: 8, trust: { legal: 2, exec: 3 }, intel: ["You notified the regulator but declined to involve federal law enforcement."] },
+                next: "ot_disclosure",
+            },
+            {
+                label: "Keep it internal - no regulator, no FBI, unless something forces your hand",
+                detail: "Least scrutiny, least help, most risk if it surfaces.",
+                effect: { clock: 6, set: ["quietPosture"], trust: { legal: -6, exec: 4 }, intel: ["You opted to keep the intrusion internal and notify no one externally."] },
+                next: "ot_disclosure",
+            },
+        ],
+    },
+    ot_disclosure: {
+        id: "ot_disclosure",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Wed 08:30",
+        title: "What the Public Is Told",
+        body: [
+            "The last decision is the one the town will remember: what, if anything, to tell the public about a stranger reaching into the systems that treat their water. General Counsel lays out the range, from a full proactive advisory to saying nothing on the argument that no one was harmed.",
+            "The right answer depends entirely on what you can actually prove about whether the process was touched and whether the attacker is truly gone.",
+        ],
+        onEnter: function (s) {
+            if (s.flags.processTripped) {
+                return { intel: ["FINAL: a real dosing excursion reached the distribution system. A public advisory is not optional."] };
+            }
+            if (s.flags.implantRemoved && (s.flags.safeState || s.flags.fullShutdown)) {
+                return { intel: ["FINAL: you can show the process stayed safe and the foothold is closed. You are deciding from evidence."] };
+            }
+            return { intel: ["FINAL: you cannot prove the process was untouched or the attacker is truly gone. You are deciding in the dark."] };
+        },
+        choices: [
+            {
+                label: "Issue a full public advisory and proactively brief regulators and customers",
+                detail: "Transparent and costly. The high road when public health is in play.",
+                effect: { clock: 30, set: ["properDisclosure"], trust: { legal: 8, exec: -6 } },
+                next: function (s) { return resolveOtEnding(s, "proactive"); },
+            },
+            {
+                label: "Make the minimum required regulatory notification, quietly",
+                detail: "Meet the obligation, limit the noise.",
+                effect: { clock: 20, trust: { exec: 5, legal: -2 } },
+                next: function (s) { return resolveOtEnding(s, "minimal"); },
+            },
+            {
+                label: "Issue nothing - argue there was no safety impact and no breach to report",
+                detail: "Only defensible if you can prove it. Otherwise a gamble with a town's trust.",
+                effect: { clock: 15, trust: { exec: 7 } },
+                next: function (s) { return resolveOtEnding(s, "none"); },
+            },
+        ],
+    },
+    // ──────────────────────────────── ENDINGS ───────────────────────────────────
+    ot_ending_textbook: {
+        id: "ot_ending_textbook",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Contained, Clean",
+        isEnding: true,
+        endingTitle: "Outcome: Contained Before It Touched Anyone",
+        endingTone: "win",
+        body: [
+            "You read a fragile network instead of swinging at it, put the process beyond the reach of anyone on the wire, found the box the intruder actually came to plant, pulled it, and treated the whole thing as the federal crime it was - evidence bagged, regulator and FBI looped in, the public told the truth in proportion.",
+            "The town's water never changed. The implant is in an evidence bag instead of a cabinet. The board hears a story about a team that knew not to yank the wrong cable and knew exactly which box to pull. Somewhere an operator is mapping a water utility's defenses and finding this one closed.",
+            "Nobody had to boil anything. That is what winning looks like here: a quiet morning and a town that never knew.",
+        ],
+    },
+    ot_ending_held_messy: {
+        id: "ot_ending_held_messy",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Secured the Hard Way",
+        isEnding: true,
+        endingTitle: "Outcome: Secured, But It Cost You",
+        endingTone: "mixed",
+        body: [
+            "The process stayed safe and the attacker is out, and that is the part that matters most. But the road here was rougher than it needed to be - a fragile network jostled, trust spent on the operations floor, a foothold closed by muffling it rather than holding it in your hand.",
+            "The incident closes as a genuine save with asterisks. There are runbooks to rewrite about what you do and do not cut on an OT network, and a few people in operations who will want to be asked before the next time security reaches for the firewall.",
+            "A win. Just not the clean one.",
+        ],
+    },
+    ot_ending_overreact: {
+        id: "ot_ending_overreact",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Cried Wolf",
+        isEnding: true,
+        endingTitle: "Outcome: Safe, and Maybe Overdone",
+        endingTone: "mixed",
+        body: [
+            "You shut the whole plant down, and nothing the intruder reached ever hurt anyone - because nothing was running. On the safety scoreboard you cannot be faulted. On every other one, the bill came due: a town under a precautionary advisory, a day of lost production, a regulator asking why a recon implant that never moved a setpoint warranted a public scare you might have avoided with a screwdriver and a steady hand.",
+            "Erring toward safety in OT is defensible, and you can defend it. You will just be defending it for a while, to people who remember the bottled water more than the threat.",
+            "Safe is the right place to land. You took the expensive road to get there.",
+        ],
+    },
+    ot_ending_persistence: {
+        id: "ot_ending_persistence",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "They Kept a Key",
+        isEnding: true,
+        endingTitle: "Outcome: The Door You Left Open",
+        endingTone: "loss",
+        body: [
+            "You closed the incident on the part you could see - the person who left, the scan that stopped - and reported it like a matter settled. But the implant the intruder actually came to plant is still in its cabinet, still beaconing to a gateway you do not control, still a way back into the systems that treat a town's water.",
+            "On paper the case is closed. In the comms room, a small board with a cellular modem disagrees. Whoever sent the recon operator now has a standing invitation to come back at a time of their choosing, and the next visit will not be reconnaissance.",
+            "You answered the question on the form. You left the real one open, screwed to a rack.",
+        ],
+    },
+    ot_ending_safety_event: {
+        id: "ot_ending_safety_event",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "It Reached the Water",
+        isEnding: true,
+        endingTitle: "Outcome: It Reached the Water",
+        endingTone: "loss",
+        body: [
+            "The one line you could not let the attacker cross, they crossed - a dosing setpoint moved on a plant that serves drinking water, and for a handful of seconds the process did what a stranger told it to. The operator caught it and the levels were almost certainly harmless, but \"almost certainly\" buys you a do-not-drink advisory, a state investigation, and a town that now thinks about its tap water differently.",
+            "Somewhere in the timeline is the moment it was preventable: a network left steerable, a process never taken to manual, a decision to watch a little longer. The attacker only had to get lucky inside the window you left open.",
+            "Everything else is a footnote now. The headline is that the water moved on someone else's command.",
+        ],
+    },
+    ot_ending_friendly_fire: {
+        id: "ot_ending_friendly_fire",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Wrong Collar",
+        isEnding: true,
+        endingTitle: "Outcome: You Caught the Wrong Person",
+        endingTone: "loss",
+        body: [
+            "You detained a legitimate vendor technician doing the job he was badged in to do, while the masked figure who actually mattered was already gone and the device he planted kept beaconing through the whole confrontation. You spent your urgency on the one person in the building who was not a threat.",
+            "Now Legal is managing a complaint, the vendor relationship is in the freezer, and the implant you should have been hunting is still in its cabinet. The real intruder could not have scripted a better diversion than the one you ran for free.",
+            "You were right that there was an attacker. You put the cuffs on the contractor.",
+        ],
+    },
+    ot_ending_public_breach: {
+        id: "ot_ending_public_breach",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Page One",
+        isEnding: true,
+        endingTitle: "Outcome: A Critical-Infrastructure Attack, Hidden",
+        endingTone: "loss",
+        body: [
+            "A stranger reached into the controls of a public water system, and you decided the town did not need to know and the regulator did not need to be told. The intrusion was real and the foothold was never fully closed, which means the silence was not caution - it was a bet that nobody would ever find out.",
+            "They find out. They always find out, and when a confirmed attack on drinking-water infrastructure surfaces with a paper trail showing the operator knew and said nothing, the story stops being about a clever adversary. It becomes about a utility that hid an attack on the public's water, and a regulator asking the one question with no good answer: when did you know.",
+            "The intrusion was a bad night. The cover-up is what becomes the case study.",
+        ],
+    },
+};
+// Decide the ending from final state. Flags set here intentionally persist into the report.
+function resolveOtEnding(s, disclosure) {
+    const footholdOpen = s.flags.latentImplant || (!s.flags.implantRemoved && !s.flags.beaconBlocked) || s.dataExposure >= 60;
+    const processSafe = s.flags.safeState || s.flags.fullShutdown || s.caseStrength >= 60;
+
+    // A real safety event: the process went out of control.
+    if (s.flags.processTripped || s.caseStrength < 28) {
+        return "ot_ending_safety_event";
+    }
+    // You detained a legitimate contractor while the real foothold persisted.
+    if (s.flags.confrontedWrong && footholdOpen) {
+        return "ot_ending_friendly_fire";
+    }
+    // Real intrusion into critical infrastructure, and you chose not to report it.
+    if (footholdOpen && disclosure === "none") {
+        s.flags.recklessNoDisclosure = true;
+        return "ot_ending_public_breach";
+    }
+    // You reported it, but the attacker still holds a remote foothold you never closed.
+    if (footholdOpen) {
+        return "ot_ending_persistence";
+    }
+    // You scrammed the whole plant for a recon intrusion you could have handled surgically.
+    if (s.flags.fullShutdown && !s.flags.safeState) {
+        return "ot_ending_overreact";
+    }
+    // Clean: process verified safe, implant removed, reported, trust intact.
+    if (processSafe && s.flags.implantRemoved && !s.flags.fullShutdown && s.flags.lawEnforcement && disclosure !== "none" && avgOk(s)) {
+        return "ot_ending_textbook";
+    }
+    return "ot_ending_held_messy";
+}
+function avgOk(s) {
+    return (s.trust.legal + s.trust.eng + s.trust.exec) / 3 >= 48;
+}
+function scoreAdjust(s) {
+    let delta = 0;
+    const wins = [];
+    const losses = [];
+    const avg = (s.trust.legal + s.trust.eng + s.trust.exec) / 3;
+    if (s.flags.characterized) delta += 3;
+    if (s.flags.safeState) delta += 7;
+    if (s.flags.implantRemoved) delta += 8;
+    if (s.flags.evidencePreserved) delta += 3;
+    if (s.flags.lawEnforcement) delta += 4;
+    if (s.flags.processTripped) delta -= 14;
+    if (s.flags.latentImplant) delta -= 10;
+    if (s.flags.confrontedWrong) delta -= 6;
+    if (s.flags.fullShutdown) delta -= 4;
+    if (s.flags.recklessNoDisclosure) delta -= 12;
+    if (s.flags.characterized) wins.push("You characterized the intrusion before acting on a fragile OT network.");
+    if (s.flags.safeState) wins.push("You put the process in verified-safe local control, beyond the network's reach.");
+    if (s.flags.implantRemoved) wins.push("You found and removed the physical implant and closed the attacker's foothold.");
+    if (s.flags.evidencePreserved) wins.push("You preserved the implant and chain of custody for the investigation.");
+    if (s.flags.lawEnforcement) wins.push("You treated a critical-infrastructure intrusion as the crime it was and engaged the FBI and regulator.");
+    if (s.flags.processTripped) losses.push("A dosing excursion reached the distribution system - a preventable public-safety event.");
+    if (s.flags.latentImplant) losses.push("You closed the incident with the attacker's implant still in place and beaconing.");
+    if (s.flags.confrontedWrong) losses.push("You detained a legitimate contractor while the real device kept beaconing.");
+    if (s.flags.fullShutdown) losses.push("You shut down a public water plant - safe, but a heavy and possibly avoidable cost.");
+    if (s.flags.recklessNoDisclosure) losses.push("You declined to report a confirmed attack on critical infrastructure.");
+    if (avg < 45) losses.push("Stakeholder trust frayed. The next call will be harder to make.");
+    return { delta: delta, wins: wins, losses: losses };
+}
+return {
+    meta: {
+        id: "ot",
+        title: "Safe State",
+        codename: "OT Intrusion",
+        blurb: "Someone is on the plant floor and on the OT network of a water utility, and they left something behind. Keep the process safe, find the implant, and decide what the town is told.",
+        premise: "After midnight, an intruder reaches the operational-technology network of a municipal water-treatment plant and plants a cellular implant on the controllers that dose a town's drinking water. You work it from three seats as it escalates: analyst, then commander, then CISO. On OT the wrong containment move can trip a live process, the real threat is the box left behind, and public safety is the clock.",
+        difficulty: "Hard",
+        accent: "indigo",
+        tags: ["OT/ICS", "Physical", "Critical Infrastructure"],
+        acts: 3,
+    },
+    firstScene: "ot_start",
+    initialState: function () {
+        return {
+            scene: "ot_start",
+            clock: 0,
+            caseStrength: 50,
+            dataExposure: 45,
+            trust: { legal: 55, eng: 60, exec: 55 },
+            flags: {},
+            intel: [],
+            log: [],
+        };
+    },
+    scenes: SCENES,
+    meterLabels: {
+        primary1: "Process Safety",
+        primary2: "Intrusion Reach",
+        s1: "Regulatory",
+        s2: "Plant Ops",
+        s3: "Executive",
+    },
+    scoreAdjust: scoreAdjust,
+};
+})();
+
+const lostDeviceScenario = (function () {
+"use strict";
+/**
+ * Scenario: "Last Seen"
+ * A C-level laptop is lost/stolen abroad and the executive's account lights up from
+ * the same city. You work it from three seats:
+ *   Act 1  - SOC Analyst         (the alerts)
+ *   Act 2  - Incident Commander  (the scope)
+ *   Act 3  - CISO                (the notification)
+ *
+ * Ground truth: the CFO's MacBook is taken from a taxi in Lisbon. FileVault is on,
+ * but the device was asleep with a live SSO session token, so the disk encryption is
+ * moot if the session is usable. Local 'Board Q2' folder holds ~4,200 customer records
+ * plus draft M&A financials. The thief is almost certainly opportunistic (factory-reset
+ * for resale, no data access) - but that is unprovable, and breach-notification safe
+ * harbor depends on PROVING the device was encrypted and the session unused. The real
+ * hole is the live cloud session, not the disk.
+ */
+const SCENES = {
+    // ───────────────────────────── ACT 1 - SOC ANALYST ──────────────────────────
+    ls_start: {
+        id: "ls_start",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 16:48",
+        title: "Last Seen",
+        body: [
+            "Three alerts stack up inside a minute, and together they spell something worse than any one of them. Your EDR shows the CFO's MacBook checked in normally at 15:12 from the conference Wi-Fi in Lisbon, then went dark and has not been seen since. Your identity platform shows her single-sign-on account authenticating from a new device fingerprint in Lisbon eleven minutes ago. And a help-desk ticket, marked urgent, just landed: \"Marisol's laptop was taken from her bag in a taxi. She is mid-conference and very upset.\"",
+            "A C-level laptop, gone, in a foreign city, with her account lighting up from the same place. The data on a CFO's machine is the kind that ends up in regulatory filings. The clock on this starts now, and it is not a generous one.",
+        ],
+        intelReveal: [
+            "CFO laptop went dark at 15:12 (Lisbon); reported stolen from a taxi.",
+            "(unconfirmed) CFO's SSO account authenticated from a new device in Lisbon eleven minutes ago.",
+        ],
+        choices: [
+            {
+                label: "Pull the full context first: encryption status, what is synced locally, what that session is doing",
+                detail: "Act on facts, not panic. Costs minutes while the session may be live.",
+                effect: { clock: 14, caseStrength: 8, set: ["assessed"], intel: ["You began assembling device, data, and identity context before acting."] },
+                next: "ls_assess",
+            },
+            {
+                label: "Remote-wipe the laptop through MDM right now",
+                detail: "Destroy the data on the device. Only works if it checks in - and it erases your evidence.",
+                effect: { clock: 5, caseStrength: 10, dataExposure: -6, set: ["wipeIssued"], trust: { eng: -2 }, intel: ["You issued a remote wipe. It executes on next check-in; endpoint forensic evidence will be lost."] },
+                next: "ls_fast_wipe",
+            },
+            {
+                label: "Disable her account and kill every active session immediately",
+                detail: "Close the identity hole now. It also locks the CFO out mid-conference.",
+                effect: { clock: 5, caseStrength: 14, dataExposure: -8, set: ["sessionsRevoked"], trust: { eng: 3, exec: -5 }, intel: ["You disabled the account and revoked all sessions. The Lisbon session dropped; the CFO is now locked out."] },
+                next: "ls_kill_sessions",
+            },
+            {
+                label: "Open a ticket and wait for the CFO to confirm the details",
+                detail: "Be sure before you disrupt an executive. The session keeps running while you wait.",
+                effect: { clock: 10, caseStrength: -6, dataExposure: 10, set: ["delayed"], trust: { exec: 2 }, intel: ["You waited for confirmation; the Lisbon session remained active during the delay."] },
+                next: "ls_slow_ticket",
+            },
+        ],
+    },
+    ls_assess: {
+        id: "ls_assess",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 17:04",
+        title: "What's Actually at Risk",
+        body: [
+            "The picture comes together, good and bad. Good: FileVault is enabled; the disk is encrypted at rest. Bad: the device was asleep, not shut down, and the Lisbon authentication did not use a password - it rode an existing browser session token. Whoever has the laptop may be inside a live, already-authenticated session, where encryption-at-rest protects nothing.",
+            "And the local data is exactly the wrong data: a synced \"Board Q2\" folder holding a customer export of roughly 4,200 records and a set of draft M&A financials. As you watch, the Lisbon session reaches toward the finance SharePoint.",
+        ],
+        intelReveal: [
+            "CONFIRMED: FileVault on (disk encrypted), but the device was asleep with a live session token.",
+            "CONFIRMED: local 'Board Q2' folder holds ~4,200 customer records and draft M&A financials.",
+            "(unconfirmed) The Lisbon session is attempting to reach the finance SharePoint.",
+        ],
+        choices: [
+            {
+                label: "Revoke all her tokens and sessions, force re-auth everywhere, and rotate credentials",
+                detail: "Slam the live-session door. The real hole, closed.",
+                effect: { clock: 12, caseStrength: 24, dataExposure: -18, set: ["sessionsRevoked"], trust: { eng: 5, legal: 4 }, intel: ["You revoked every session and token and rotated credentials; the live Lisbon session died mid-request."] },
+                next: "ls_revoke",
+            },
+            {
+                label: "Remote-lock and wipe the device and scope the local data",
+                detail: "Handle the hardware and the at-rest data. Leaves the session question open.",
+                effect: { clock: 10, caseStrength: 8, dataExposure: -6, set: ["deviceWiped"], trust: { eng: 3 }, intel: ["You issued a remote lock and wipe and began scoping the local data."] },
+                next: "ls_lock_wipe",
+            },
+            {
+                label: "Escalate to the incident commander with the full picture",
+                detail: "Hand up a complete, ugly picture and let command coordinate.",
+                effect: { clock: 6, caseStrength: 2, trust: { exec: 3 } },
+                next: "ls_command",
+            },
+        ],
+    },
+    ls_fast_wipe: {
+        id: "ls_fast_wipe",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 16:55",
+        title: "Wipe First",
+        body: [
+            "The wipe is queued. Whether it lands depends on the laptop phoning home, and a powered-down device in a thief's bag may never do so. You have also, in your hurry, made a choice you cannot undo: if the device does check in, any forensic record of whether data was opened goes with it.",
+            "And you have not touched the thing that is actually live. The Lisbon session is still authenticated, still riding its token, still reaching into your cloud while the wipe sits in \"pending.\" The hardware felt like the threat. The session is the threat.",
+        ],
+        intelReveal: [
+            "Remote wipe queued; executes only if the device checks in. Endpoint forensics will be lost.",
+            "(unconfirmed) The Lisbon cloud session remains live and unaddressed.",
+        ],
+        choices: [
+            {
+                label: "Now revoke the cloud sessions and tokens - the real hole is still open",
+                detail: "Close the live session you skipped. Recover the gap.",
+                effect: { clock: 10, caseStrength: 18, dataExposure: -16, set: ["sessionsRevoked"], trust: { eng: 4, legal: 4 }, intel: ["You revoked the live sessions and rotated credentials, closing the cloud foothold."] },
+                next: "ls_revoke",
+            },
+            {
+                label: "Escalate to the IC - the device is handled",
+                detail: "Hand it up believing the laptop was the whole problem.",
+                effect: { clock: 6, caseStrength: 2, set: ["wipedOnly"], trust: { exec: 2 }, intel: ["You escalated treating the device as contained, with the live cloud session still open."] },
+                next: "ls_command",
+            },
+        ],
+    },
+    ls_kill_sessions: {
+        id: "ls_kill_sessions",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 16:55",
+        title: "Lights Out on the Session",
+        body: [
+            "You pull the plug on the identity side: account disabled, every token revoked, the Lisbon session killed in the middle of whatever it was reaching for. The single most dangerous thing - a live, authenticated session in a stranger's hands - is now dead.",
+            "The cost is immediate and personal: Marisol is about to walk on stage, her laptop is gone, and now her account does not work either, and she is going to have feelings about that. But the hole is closed, and that was the right thing to do first.",
+        ],
+        intelReveal: [
+            "Account disabled and all sessions revoked; the live Lisbon session terminated.",
+            "CFO is locked out mid-conference; expect executive friction.",
+        ],
+        choices: [
+            {
+                label: "Now assess the device state and the local data, and loop the CFO in properly",
+                detail: "With the bleeding stopped, scope it and manage the relationship.",
+                effect: { clock: 12, caseStrength: 8, set: ["assessed"], trust: { exec: 2 }, intel: ["With sessions revoked, you moved to assess encryption state and local data scope."] },
+                next: "ls_assess",
+            },
+            {
+                label: "Escalate to the incident commander",
+                detail: "Hand up a closed session and an open scoping question.",
+                effect: { clock: 6, trust: { exec: 1 } },
+                next: "ls_command",
+            },
+        ],
+    },
+    ls_slow_ticket: {
+        id: "ls_slow_ticket",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 17:10",
+        title: "While You Wait",
+        body: [
+            "You ask for confirmation and the answers trickle back over twenty-five long minutes - time zones, a conference hallway, a rattled executive. While you wait, the Lisbon session does not. It browses. By the time Marisol confirms what you already knew, your DLP shows the session opened the finance SharePoint and at least listed the contents of a regulated folder.",
+            "The delay had a price and it was paid in exposure. You should have moved first and confirmed second.",
+        ],
+        intelReveal: [
+            "CONFIRMED: during the delay, the live session reached the finance SharePoint and a regulated folder.",
+        ],
+        choices: [
+            {
+                label: "Stop waiting - revoke the sessions and assess now",
+                detail: "Belatedly close the door and scope the damage.",
+                effect: { clock: 10, caseStrength: 12, dataExposure: -6, set: ["sessionsRevoked"], trust: { eng: 2 }, intel: ["You finally revoked the sessions and moved to assess, behind the curve."] },
+                next: "ls_assess",
+            },
+            {
+                label: "Escalate to the incident commander, behind the curve",
+                detail: "Hand up an incident the delay made worse.",
+                effect: { clock: 6, dataExposure: 6, trust: { exec: -3 } },
+                next: "ls_command",
+            },
+        ],
+    },
+    ls_revoke: {
+        id: "ls_revoke",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 17:20",
+        title: "Door Closed",
+        body: [
+            "Sessions revoked, tokens dead, credentials rotated, MFA re-enrolled to a device you control. Whatever the laptop is doing now, it is doing it locked out: the live cloud foothold is gone and cannot be reopened from Lisbon. What remains is a bounded, answerable question - what was on the disk, was it encrypted, and was anything reached before you cut the cord.",
+            "That is the position you want: the emergency over, the investigation tractable.",
+        ],
+        intelReveal: [
+            "CONFIRMED: live session foothold eliminated; remaining risk is data-at-rest and pre-revocation access.",
+        ],
+        choices: [
+            {
+                label: "Hand off to the incident commander to run the data question",
+                detail: "Bring command a contained identity incident and a clear next step.",
+                effect: { clock: 8, caseStrength: 4, trust: { eng: 4, exec: 2 } },
+                next: "ls_command",
+            },
+        ],
+    },
+    ls_lock_wipe: {
+        id: "ls_lock_wipe",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 17:18",
+        title: "Hardware Handled",
+        body: [
+            "The remote lock lands and the wipe is queued; the local copy of the Board Q2 folder will be gone if and when the device checks in. You start scoping exactly which records lived in it. It is real progress on the data-at-rest problem.",
+            "But you stepped past the session. Unless someone revokes those tokens, the encryption you are leaning on protects a disk while a live login wanders your cloud. You have locked the file cabinet and left the front door open.",
+        ],
+        intelReveal: [
+            "Remote lock/wipe issued for the device; local data scoping underway.",
+            "(unconfirmed) Cloud sessions not yet revoked; live-token risk remains.",
+        ],
+        choices: [
+            {
+                label: "Hand off to the incident commander",
+                detail: "Bring command the device side, with the session question still open.",
+                effect: { clock: 8, caseStrength: 2, trust: { exec: 2 } },
+                next: "ls_command",
+            },
+        ],
+    },
+    // ─────────────────────────── ACT 2 - INCIDENT COMMANDER ──────────────────────
+    ls_command: {
+        id: "ls_command",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Thu 17:45",
+        title: "What Was On It, and Can We Prove It",
+        body: [
+            "You take the bridge with IT, Legal, and a CFO now in a quiet conference side-room sounding more composed than the situation deserves. General Counsel cuts to the legal heart of it: breach-notification law gives a safe harbor if the data was encrypted and inaccessible - but that defense only holds if you can prove the device was locked and the session was not usable. \"It had FileVault\" is not the same as \"we can prove no one got in.\"",
+            "Two questions decide everything from here. What regulated data was actually on it, and can you stand behind a claim about whether it was reachable.",
+        ],
+        intelReveal: [
+            "Legal: encryption safe-harbor depends on a provable locked state, not just FileVault being enabled.",
+        ],
+        choices: [
+            {
+                label: "Forensically establish the device and session state and scope the exact records",
+                detail: "Build the evidence the safe-harbor call rests on. The defensible path.",
+                effect: { clock: 16, caseStrength: 16, dataExposure: -12, set: ["scoped", "evidencePreserved"], trust: { legal: 8, eng: 4 }, intel: ["Forensics reconstructed the device state and session timeline and scoped the exposed records precisely."] },
+                next: "ls_forensics",
+            },
+            {
+                label: "Assume the worst and treat it as a reportable breach now",
+                detail: "Start the notification clock. Safe, possibly more than necessary.",
+                effect: { clock: 8, set: ["assumedBreach"], trust: { legal: 4, exec: -3 }, intel: ["You elected to treat it as a reportable breach without waiting for forensics."] },
+                next: "ls_assume_breach",
+            },
+            {
+                label: "Lean on \"the disk was encrypted, we are fine\" and keep it low-key",
+                detail: "Downplay it. Ignores the live-session and provability problems.",
+                effect: { clock: 6, caseStrength: -4, dataExposure: 8, set: ["downplayed"], trust: { legal: -6 }, intel: ["You characterized it internally as a non-event on the strength of FileVault alone."] },
+                next: "ls_downplay",
+            },
+            {
+                label: "Put resources on locating and recovering the physical device",
+                detail: "Chase the laptop. Satisfying, usually low-yield, and it burns time.",
+                effect: { clock: 10, set: ["chasedDevice"], trust: { exec: 1 }, intel: ["You tasked recovery efforts on the physical device via Find My and local police."] },
+                next: "ls_recover",
+            },
+        ],
+    },
+    ls_forensics: {
+        id: "ls_forensics",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Thu 18:10",
+        title: "The Timeline",
+        body: [
+            "Forensics and identity logs reconstruct the hour with satisfying precision. FileVault: confirmed on. Device: asleep, not off. The session token: live from theft until the moment it was revoked - and whether it touched anything in that window is now a matter of record, not guesswork. The local export: exactly 4,217 customer records, names and emails and order histories, plus three draft M&A documents.",
+            "You can now say true sentences with evidence behind them, which is the only kind worth saying to a regulator. Whether this is a reportable breach is suddenly an answerable question instead of a fear.",
+        ],
+        intelReveal: [
+            "CONFIRMED: FileVault on, device asleep, session timeline and record scope established with evidence.",
+            "Exposed local set: 4,217 customer records + 3 draft M&A documents.",
+        ],
+        choices: [
+            {
+                label: "Hand the CISO a precise, evidenced scope",
+                detail: "Give leadership facts, not fears.",
+                effect: { clock: 8, trust: { legal: 4, exec: 3 } },
+                next: "ls_exec",
+            },
+            {
+                label: "Also engage outside breach counsel and the cyber-insurer, preserving privilege",
+                detail: "Build the determination on the firmest possible ground.",
+                effect: { clock: 12, set: ["insurerLooped"], trust: { legal: 6, exec: -2 }, intel: ["You looped in breach counsel and the cyber-insurer under privilege."] },
+                next: "ls_exec",
+            },
+        ],
+    },
+    ls_assume_breach: {
+        id: "ls_assume_breach",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Thu 18:00",
+        title: "Belt and Suspenders",
+        body: [
+            "You decide not to gamble on proving a negative: if you cannot instantly demonstrate the data was unreachable, you will treat it as exposed and notify. It is the conservative, defensible-by-default posture, and it takes the hardest legal question off the table by surrendering to it.",
+            "It is also, quite possibly, an over-correction - lighting up regulators and customers about an encrypted laptop a thief most likely factory-reset for resale. Safe. Maybe needlessly loud.",
+        ],
+        intelReveal: [
+            "Decision: treat as a reportable breach without forensic scoping. Conservative, possibly over-inclusive.",
+        ],
+        choices: [
+            {
+                label: "Take the conservative posture to the CISO",
+                detail: "Hand up a notify-and-be-safe recommendation.",
+                effect: { clock: 8, trust: { legal: 2 } },
+                next: "ls_exec",
+            },
+        ],
+    },
+    ls_downplay: {
+        id: "ls_downplay",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Thu 17:58",
+        title: "Nothing to See",
+        body: [
+            "You brief it upward as a closed matter: the laptop was encrypted, the odds are it is in pieces at a market stall by now, no need to alarm anyone. It is the comfortable story. It also quietly skips the two facts that matter - that the session was live, and that without forensics you cannot actually prove the disk was locked when it left her bag.",
+            "If anyone ever asks you to show your work, the file is going to be very thin.",
+        ],
+        intelReveal: [
+            "Incident characterized internally as a non-event, without forensic proof of locked state.",
+        ],
+        choices: [
+            {
+                label: "Take the low-key line to the CISO",
+                detail: "Hand up reassurance you cannot fully back.",
+                effect: { clock: 6, dataExposure: 4, trust: { exec: 2 } },
+                next: "ls_exec",
+            },
+        ],
+    },
+    ls_recover: {
+        id: "ls_recover",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Thu 18:05",
+        title: "Find My",
+        body: [
+            "Recovery is its own small drama. The device pings once from a neighborhood across Lisbon, then goes dark for good - the signature of a factory reset, which is exactly what an opportunist does to a stolen laptop before selling it. It is mildly reassuring: this reads like theft for resale, not for your data. It is also unprovable, and it cost you forty minutes you might have spent on forensics.",
+        ],
+        intelReveal: [
+            "Device pinged once then went dark - consistent with a factory reset for resale (opportunistic theft).",
+            "Recovery effort inconclusive and time-consuming.",
+        ],
+        choices: [
+            {
+                label: "Stop chasing and establish the evidence properly",
+                detail: "Convert a hunch about resale into a documented scope.",
+                effect: { clock: 10, caseStrength: 8, dataExposure: -4, set: ["scoped", "evidencePreserved"], trust: { legal: 4 }, intel: ["You ended the chase and ran proper forensics to scope the exposure."] },
+                next: "ls_forensics",
+            },
+        ],
+    },
+    // ──────────────────────────────── ACT 3 - CISO ──────────────────────────────
+    ls_exec: {
+        id: "ls_exec",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Thu 19:30",
+        title: "The Clock on the Wall",
+        body: [
+            "You convene the decision: General Counsel, the CEO, the head of comms, and Marisol dialed in, composed and contrite. Notification deadlines are measured in hours now, not days, and they run whether or not you are ready. The question is whether this rises to a reportable breach, and how you carry yourself if it does.",
+            "What you decide here, and how you treat the executive whose laptop started it, sets the tone for everything that follows.",
+        ],
+        intelReveal: [
+            "Executive decision convened under a tight statutory notification clock.",
+        ],
+        choices: [
+            {
+                label: "Make the safe-harbor determination on the evidence and own the call",
+                detail: "Decide like someone who can show their reasoning.",
+                effect: { clock: 12, trust: { legal: 6, exec: 2 }, intel: ["You framed a determination grounded in the forensic evidence."] },
+                next: "ls_disclosure",
+            },
+            {
+                label: "Defer the determination to outside breach counsel",
+                detail: "Let specialists make the reportability call. Slower, very defensible.",
+                effect: { clock: 10, set: ["counselLed"], trust: { legal: 6, exec: -1 }, intel: ["You deferred the reportability determination to outside breach counsel."] },
+                next: "ls_disclosure",
+            },
+            {
+                label: "Cut the CFO out and brief the board that security \"contained an executive's mistake\"",
+                detail: "Deflect the blame upward. It buys cover and burns the relationship.",
+                effect: { clock: 8, caseStrength: -6, set: ["execAlienated"], trust: { exec: -12, eng: -6 }, intel: ["You framed it to the board as the CFO's error, sidelining her from the response."] },
+                next: "ls_disclosure",
+            },
+        ],
+    },
+    ls_disclosure: {
+        id: "ls_disclosure",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Thu 20:15",
+        title: "The Notification Call",
+        body: [
+            "It comes down to the sentence you are willing to put in writing. Notify every affected customer and the regulator proactively; make only the minimum quiet filing; or determine there is no reportable breach at all and say nothing.",
+            "The honest version of this choice depends on what you can prove. A clean determination of \"no breach\" is a gift you can only give yourself if the evidence is actually there.",
+        ],
+        onEnter: function (s) {
+            if (s.flags.scoped && s.flags.sessionsRevoked && s.dataExposure < 45) {
+                return { intel: ["FINAL: encryption confirmed, session closed before access, scope evidenced. A 'no reportable breach' finding is defensible."] };
+            }
+            if (s.flags.wipedOnly || (!s.flags.sessionsRevoked && (s.flags.delayed || s.flags.downplayed))) {
+                return { intel: ["FINAL: a live session was open and may have reached regulated data. Silence is not defensible."] };
+            }
+            return { intel: ["FINAL: you cannot prove the device was locked or the session unused. Any 'no breach' claim is a bet against your own missing evidence."] };
+        },
+        choices: [
+            {
+                label: "Proactively notify all affected customers and the regulator",
+                detail: "Transparent and costly. Get ahead of it on your own terms.",
+                effect: { clock: 30, set: ["properDisclosure"], trust: { legal: 8, exec: -6 } },
+                next: function (s) { return resolveLsEnding(s, "proactive"); },
+            },
+            {
+                label: "Make the minimum required regulatory filing, quietly",
+                detail: "Limit the blast radius. General Counsel's nervous compromise.",
+                effect: { clock: 20, trust: { exec: 5, legal: -2 } },
+                next: function (s) { return resolveLsEnding(s, "minimal"); },
+            },
+            {
+                label: "Determine no reportable breach and notify no one",
+                detail: "Only defensible if you can prove encryption and no access. Otherwise a gamble.",
+                effect: { clock: 15, trust: { exec: 7 } },
+                next: function (s) { return resolveLsEnding(s, "none"); },
+            },
+        ],
+    },
+    // ──────────────────────────────── ENDINGS ───────────────────────────────────
+    ls_ending_textbook: {
+        id: "ls_ending_textbook",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Buttoned Up",
+        isEnding: true,
+        endingTitle: "Outcome: Closed Tight, and Provable",
+        endingTone: "win",
+        body: [
+            "You went for the real hole first - the live session, not the hardware - and killed it before it could become a story. Then you proved your work: encryption confirmed, the access window reconstructed, the exact records scoped, the whole determination resting on evidence instead of hope.",
+            "The disclosure call, whichever way it broke, was one you can stand behind in front of a regulator because you can show exactly what happened and exactly what did not. Marisol got her account back with an apology instead of a blame memo, and the relationship survived.",
+            "A lost laptop became a clean file and a calm filing. That is the job done right: the boring outcome, earned.",
+        ],
+    },
+    ls_ending_held_messy: {
+        id: "ls_ending_held_messy",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Closed, Bruised",
+        isEnding: true,
+        endingTitle: "Outcome: Handled, With Bruises",
+        endingTone: "mixed",
+        body: [
+            "The incident is closed and the company is not in the headlines. But the path was bumpier than it needed to be - a beat too slow somewhere, a relationship strained, a determination made on thinner evidence than you would have liked to defend.",
+            "It resolves as a real save with footnotes. The notification, if any, holds up; the scoping is good enough; the lessons are logged. You will be tightening the lost-device runbook, and smoothing things over with an executive or two.",
+            "A win. Just not the tidy one.",
+        ],
+    },
+    ls_ending_over_notify: {
+        id: "ls_ending_over_notify",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Belt and Suspenders",
+        isEnding: true,
+        endingTitle: "Outcome: Safe, and Louder Than It Had to Be",
+        endingTone: "mixed",
+        body: [
+            "You closed the session fast and then, rather than do the work to prove the device was harmless, you notified the world anyway. Legally you are bulletproof - nobody is ever sued for over-disclosing. The bill came in other currencies: thousands of customers alarmed about an encrypted laptop a thief almost certainly wiped for resale, a news cycle you summoned yourself, and a board asking why a non-event got a press release.",
+            "Erring toward disclosure is defensible, and you can defend it. You will just be defending the cost of crying breach over a device that, on the evidence you chose not to gather, probably never leaked a thing.",
+            "Safe is the right place to land. You took the loud road to get there.",
+        ],
+    },
+    ls_ending_open_session: {
+        id: "ls_ending_open_session",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "The Door You Left Open",
+        isEnding: true,
+        endingTitle: "Outcome: You Wiped the Laptop and Missed the Session",
+        endingTone: "loss",
+        body: [
+            "You did the dramatic thing - the remote wipe, the satisfying gesture of reaching across the world to erase a stolen disk - and you never touched the live session that was the actual danger. Encryption-at-rest was never the question; the laptop was already unlocked and logged in, and the token kept working long after the wipe sat pending.",
+            "While you secured the hardware, an authenticated session wandered your finance cloud at will. The exposure that follows did not come off the disk you encrypted. It came through the front door you left standing open, holding a valid key you forgot to change.",
+            "You guarded the safe and left the vault unlocked.",
+        ],
+    },
+    ls_ending_unprovable: {
+        id: "ls_ending_unprovable",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Prove a Negative",
+        isEnding: true,
+        endingTitle: "Outcome: The Silence You Cannot Back Up",
+        endingTone: "loss",
+        body: [
+            "You decided there was no breach to report, on the comfortable theory that FileVault had it covered. The problem is the word \"prove.\" You never reconstructed the session, never scoped the records, never established that the device was locked when it vanished - so your no-breach determination rests on a confidence you have no evidence to support.",
+            "Months later a regulator, or a customer, or a leaked record forces the question, and you reach for the file that proves you were safe to stay silent, and the file is empty. Now you are notifying late, from a back foot, explaining why you closed an incident you never actually investigated.",
+            "Safe harbor is a document, not a feeling. You filed the feeling.",
+        ],
+    },
+    ls_ending_public_breach: {
+        id: "ls_ending_public_breach",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Notified by a Reporter",
+        isEnding: true,
+        endingTitle: "Outcome: It Went Public on Someone Else's Schedule",
+        endingTone: "loss",
+        body: [
+            "Regulated data was reachable - a live session that browsed it, or a device you can't show was locked - and you chose to say nothing. So the timeline of disclosure was set by someone other than you: a customer whose data surfaced, a journalist who got the tip, a regulator who heard it elsewhere first.",
+            "When the breach lands in public with a paper trail showing you knew and stayed quiet, the story stops being about a stolen laptop, which everyone forgives, and becomes about a company that hid one, which no one does. The data loss was survivable. The silence is the part that gets a hearing.",
+            "You did not avoid the disclosure. You just let your worst-case adversary write it.",
+        ],
+    },
+    ls_ending_exec_fallout: {
+        id: "ls_ending_exec_fallout",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Friendly Fire",
+        isEnding: true,
+        endingTitle: "Outcome: You Won the Incident and Lost the Room",
+        endingTone: "loss",
+        body: [
+            "Somewhere in the response you stopped managing an incident and started managing blame - sidelining the CFO, briefing the board about an executive's mistake, moving so heavy-handed that the people around you learned a lesson you did not mean to teach: that reporting a lost laptop to security gets you publicly thrown under the bus.",
+            "And you cannot even point to a clean win to justify it, because the technical work underneath was never nailed down. So you are left with the worst trade in the job: a mediocre containment and a scorched relationship with the executive suite, and a security org that just became the last team anyone wants to call.",
+            "You can be technically right and organizationally radioactive at the same time. Today you managed both.",
+        ],
+    },
+};
+// Decide the ending from final state. Flags set here intentionally persist into the report.
+function resolveLsEnding(s, disclosure) {
+    const sessionOpen = !s.flags.sessionsRevoked;
+    const accessed = s.flags.wipedOnly || (sessionOpen && (s.flags.delayed || s.flags.downplayed)) || s.dataExposure >= 60;
+    const provable = s.flags.scoped && s.flags.sessionsRevoked && s.dataExposure < 45;
+
+    // Heavy-handed deflection wrecked the room, for a case you cannot even show was warranted.
+    if (s.flags.execAlienated && !provable) {
+        return "ls_ending_exec_fallout";
+    }
+    // Hardware wiped, live cloud session left open.
+    if (s.flags.wipedOnly && sessionOpen) {
+        return "ls_ending_open_session";
+    }
+    // Real/likely access, and you chose to say nothing.
+    if (accessed && disclosure === "none") {
+        s.flags.recklessNoDisclosure = true;
+        return "ls_ending_public_breach";
+    }
+    // Declined to notify on an encryption claim you cannot prove.
+    if (disclosure === "none" && !provable) {
+        return "ls_ending_unprovable";
+    }
+    // Notified the world for an encrypted, never-accessed device you had already closed out.
+    if (s.flags.assumedBreach && s.flags.sessionsRevoked && !accessed && disclosure === "proactive") {
+        return "ls_ending_over_notify";
+    }
+    // Clean: session killed fast, scope evidenced, defensible disclosure, room intact.
+    if (provable && disclosure !== "none" && !s.flags.wipedOnly && avgOk(s)) {
+        return "ls_ending_textbook";
+    }
+    return "ls_ending_held_messy";
+}
+function avgOk(s) {
+    return (s.trust.legal + s.trust.eng + s.trust.exec) / 3 >= 48;
+}
+function scoreAdjust(s) {
+    let delta = 0;
+    const wins = [];
+    const losses = [];
+    const avg = (s.trust.legal + s.trust.eng + s.trust.exec) / 3;
+    if (s.flags.sessionsRevoked) delta += 8;
+    if (s.flags.scoped) delta += 7;
+    if (s.flags.evidencePreserved) delta += 3;
+    if (s.flags.insurerLooped) delta += 2;
+    if (s.flags.wipedOnly) delta -= 8;
+    if (s.flags.delayed) delta -= 5;
+    if (s.flags.downplayed) delta -= 6;
+    if (s.flags.assumedBreach) delta -= 3;
+    if (s.flags.execAlienated) delta -= 10;
+    if (s.flags.recklessNoDisclosure) delta -= 12;
+    if (s.flags.sessionsRevoked) wins.push("You killed the live session fast, closing the real foothold before encryption-at-rest was even relevant.");
+    if (s.flags.scoped) wins.push("You scoped the exposure precisely and preserved the evidence the disclosure call rested on.");
+    if (s.flags.insurerLooped) wins.push("You engaged breach counsel and the cyber-insurer early, on solid ground.");
+    if (s.flags.properDisclosure && !s.flags.assumedBreach) wins.push("You made a defensible disclosure decision and acted on it in time.");
+    if (s.flags.wipedOnly) losses.push("You wiped the hardware but left the live cloud session open - the real hole.");
+    if (s.flags.delayed) losses.push("You waited to act while a live, authenticated session kept running.");
+    if (s.flags.downplayed) losses.push("You leaned on 'it was encrypted' without proving the device was even locked.");
+    if (s.flags.execAlienated) losses.push("You torched the executive relationship deflecting blame onto the CFO.");
+    if (s.flags.recklessNoDisclosure) losses.push("You declined to notify an exposure you could not prove was contained.");
+    if (s.flags.assumedBreach && !s.flags.scoped) losses.push("You notified more broadly than the facts likely required, at real reputational cost.");
+    if (avg < 45) losses.push("Stakeholder trust frayed. The next call will be harder to make.");
+    return { delta: delta, wins: wins, losses: losses };
+}
+return {
+    meta: {
+        id: "lostdevice",
+        title: "Last Seen",
+        codename: "Lost Device",
+        blurb: "A CFO's laptop is gone in a foreign city and her account is lighting up from the same place. Close the right hole, prove what you can, and decide who to tell.",
+        premise: "A C-level laptop is stolen abroad and the executive's account starts authenticating from the same city. The disk is encrypted - but it was asleep with a live session, and the local data is the kind that ends up in regulatory filings. You work it from three seats as it escalates: analyst, then commander, then CISO. The real hole is the session, the safe harbor turns on what you can prove, and the notification clock is measured in hours.",
+        difficulty: "Standard",
+        accent: "rose",
+        tags: ["Lost Device", "Identity", "Disclosure"],
+        acts: 3,
+    },
+    firstScene: "ls_start",
+    initialState: function () {
+        return {
+            scene: "ls_start",
+            clock: 0,
+            caseStrength: 38,
+            dataExposure: 40,
+            trust: { legal: 60, eng: 60, exec: 55 },
+            flags: {},
+            intel: [],
+            log: [],
+        };
+    },
+    scenes: SCENES,
+    meterLabels: {
+        primary1: "Device Control",
+        primary2: "Data Exposure",
+        s1: "Legal",
+        s2: "IT",
+        s3: "Executive",
+    },
+    scoreAdjust: scoreAdjust,
+};
+})();
+
+const SCENARIOS = [insiderScenario, ransomwareScenario, becScenario, supplyChainScenario, ddosScenario, otScenario, lostDeviceScenario];
 
 // ─────────────────────────────── ENGINE ─────────────────────────────────────
 // (Mirrors app/ir-simulator/engine.ts; scenario data below is compiled from source.)
@@ -3228,7 +5587,7 @@ function computeReport(scenario, s) {
 }
 
 // ─────────────────────────────── THEMING ────────────────────────────────────
-const ACCENT = { cyan: "#22d3ee", red: "#f87171", amber: "#fbbf24", purple: "#c084fc", emerald: "#34d399" };
+const ACCENT = { cyan: "#22d3ee", red: "#f87171", amber: "#fbbf24", purple: "#c084fc", emerald: "#34d399", indigo: "#818cf8", rose: "#fb7185" };
 const ROLE_COLOR = { "SOC Analyst": "#22d3ee", "Incident Commander": "#fbbf24", "CISO": "#c084fc" };
 const ROLE_ABBR = { "SOC Analyst": "SOC", "Incident Commander": "CMD", "CISO": "CISO" };
 const DIFF_COLOR = { Intro: "#34d399", Standard: "#fbbf24", Hard: "#f87171" };
