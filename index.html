@@ -5539,7 +5539,2798 @@ return {
 };
 })();
 
-const SCENARIOS = [insiderScenario, ransomwareScenario, becScenario, supplyChainScenario, ddosScenario, otScenario, lostDeviceScenario];
+const webBreachScenario = (function(){
+  const exports = {}; const module = { exports: exports };
+  const require = function(){ return {}; };
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.webBreachScenario = void 0;
+/**
+ * Scenario: "Open Door"
+ * A web application breach. Three seats:
+ *   Act 1  - SOC Analyst         (the tip)
+ *   Act 2  - Incident Commander  (containment, eradication, root cause)
+ *   Act 3  - CISO                (the notification)
+ *
+ * Ground truth: eleven days ago an attacker found a SQL injection flaw in the
+ * public customer portal, dumped ~120,000 customer records (names, emails, weakly
+ * hashed passwords, and a slice of stored payment tokens) and left a web shell in
+ * an upload directory for re-entry. The flaw is still live. You learn about it not
+ * from your own tooling but from a security researcher's email and a sample on a
+ * paste site. Whether this stays a contained incident or becomes a notifiable,
+ * front-page breach depends on how fast you move and how honestly you close it.
+ */
+function avgOk(s) { return (s.trust.legal + s.trust.eng + s.trust.exec) / 3 >= 48; }
+const SCENES = {
+    // ───────────────────────────── ACT 1 - SOC ANALYST ─────────────────────────
+    web_start: {
+        id: "web_start",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Wed 11:30",
+        title: "The Tip",
+        body: [
+            "It arrives as an email, not an alert, which is its own quiet insult to the half-million dollars of security tooling you run. A researcher, polite and a little smug, says they found a SQL injection flaw in your customer portal and, to prove it, attaches a hundred rows of what is unmistakably your customer table: names, emails, password hashes, and a column that should not be readable at all.",
+            "There is a link to a paste site. The sample is already there, public, with a note that the full set is 'available on request.' Your own dashboards show nothing. The portal is up, green, serving traffic, and apparently has been bleeding for some unknown length of time without a single one of your sensors noticing.",
+            "The flaw, if it is real, is still live right now.",
+        ],
+        intelReveal: [
+            "Security researcher reports a SQL injection flaw in the public customer portal.",
+            "(unconfirmed) A 100-row sample of the customer table is posted publicly; 'full set available on request'.",
+            "(unconfirmed) The portal shows no internal alerts and is still serving traffic.",
+        ],
+        choices: [
+            {
+                label: "Verify the claim in your own logs before reacting",
+                detail: "Reproduce it, find the queries, learn the real scope. Costs time the app stays exposed.",
+                effect: { clock: 30, caseStrength: 10, set: ["scopedQuiet"], intel: ["You begin a quiet review: the web logs, the database query logs, and the portal's exposed parameters."] },
+                next: "web_verify",
+            },
+            {
+                label: "Take the portal offline now and stop the bleeding",
+                detail: "Maintenance mode immediately. Certain containment, certain revenue hit.",
+                effect: { clock: 8, dataExposure: -10, set: ["contained", "takenDown"], trust: { eng: -10, exec: -8 }, intel: ["You drop the customer portal into maintenance mode. The exposure stops. So does every transaction that runs through it."] },
+                next: "web_takedown",
+            },
+            {
+                label: "Push a WAF rule to block the injection pattern",
+                detail: "Fast partial containment. Keeps the app up; a web shell would not care about a WAF.",
+                effect: { clock: 12, dataExposure: -4, caseStrength: 4, set: ["wafBlocked"], intel: ["You deploy a WAF signature for the obvious injection payload. The crude version of the attack stops working."] },
+                next: "web_waf",
+            },
+            {
+                label: "Treat it as a likely bogus report; ask for proof and keep monitoring",
+                detail: "Researchers exaggerate. Do not panic over a paste. Watch and wait.",
+                effect: { clock: 120, set: ["complacent"], intel: ["You reply asking for more detail and flag it as low-confidence. The morning becomes the afternoon."] },
+                next: "web_complacent",
+            },
+        ],
+    },
+    web_verify: {
+        id: "web_verify",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Wed 12:10",
+        title: "What the Logs Confirm",
+        body: [
+            "You reproduce it in twenty minutes, and the twenty minutes are not pleasant. A single unparameterized query behind the order-history page accepts a crafted parameter and returns whatever you ask it for. The web logs show the same pattern of requests starting eleven days ago, walking the database table by table.",
+            "It is worse than a dump. In an upload directory that should only hold profile images, there is a small PHP file with a recent timestamp and a name designed to look boring. A web shell. The attacker did not just read your data; they left themselves a door.",
+        ],
+        intelReveal: [
+            "CONFIRMED: SQL injection in the order-history endpoint. Reproduced.",
+            "Exfiltration began ~11 days ago: customer table read in full (~120,000 records).",
+            "Exposed data includes email, weakly hashed passwords, and stored payment tokens.",
+            "A web shell was planted in an upload directory. The attacker has persistent access.",
+        ],
+        onEnter: () => ({ caseStrength: 18, set: ["confirmedExposure", "webShellFound"], intel: ["This is now a confirmed breach with active persistence, not a researcher's theory."] }),
+        choices: [
+            {
+                label: "Preserve forensic evidence, then take the portal offline",
+                detail: "Image, hash, document, then contain. Slow, clean, defensible.",
+                effect: { clock: 35, caseStrength: 16, dataExposure: -8, set: ["preservedEvidence", "contained", "takenDown"], trust: { legal: 6 }, intel: ["You snapshot the host and write-protect the logs before touching anything, then drop the portal to maintenance mode."] },
+                next: "web_warroom",
+            },
+            {
+                label: "Take the portal offline immediately",
+                detail: "Stop the exposure now; preserve what you can on the way.",
+                effect: { clock: 10, dataExposure: -10, set: ["contained", "takenDown"], trust: { eng: -8 }, intel: ["You pull the portal offline. The bleeding stops; the revenue pager starts."] },
+                next: "web_warroom",
+            },
+            {
+                label: "Block at the WAF and keep the app serving",
+                detail: "Avoid the outage. Bet that the rule and the cleanup will hold.",
+                effect: { clock: 10, dataExposure: -4, set: ["wafBlocked"], trust: { eng: 6 }, intel: ["You block the payload at the WAF rather than take the revenue hit. The app stays up, the web shell stays put."] },
+                next: "web_warroom",
+            },
+        ],
+    },
+    web_takedown: {
+        id: "web_takedown",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Wed 11:50",
+        title: "Lights Off",
+        body: [
+            "The portal goes dark and the exposure stops with it. You have almost certainly stopped the active bleeding, and you have done it before knowing what was actually taken, which means you are now flying half-blind in the other direction.",
+            "Engineering is already in your messages: the portal is the entire revenue path, the status page is lighting up, and Sales wants to know why the storefront is down on a Wednesday. You have a containment win and no scope to justify it with yet.",
+        ],
+        intelReveal: ["Portal offline. Active exposure halted; true scope of the breach not yet established."],
+        choices: [
+            {
+                label: "Now verify the scope in the logs before escalating",
+                detail: "Find out what actually left and whether they left a door.",
+                effect: { clock: 25, caseStrength: 8, intel: ["With the app safely down, you dig into the logs to scope the damage properly."] },
+                next: "web_verify",
+                show: (s) => !s.flags.scopedQuiet,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Hand up the containment and let the response form.",
+                effect: { clock: 8 },
+                next: "web_warroom",
+            },
+        ],
+    },
+    web_waf: {
+        id: "web_waf",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Wed 11:55",
+        title: "A Rule Is Not a Fix",
+        body: [
+            "The WAF rule catches the obvious payload, and for a moment that feels like enough. It is not. A WAF signature blocks a known shape of request; it does nothing about the data already gone, and nothing about a web shell sitting in an upload directory waiting to be visited directly.",
+            "You have raised the cost of the crude attack and bought yourself a little time. The flaw is still in the code, and you still do not know what the attacker left behind.",
+        ],
+        choices: [
+            {
+                label: "Hunt for a web shell or backdoor before escalating",
+                detail: "A WAF will not catch what is already inside. Go look.",
+                effect: { clock: 30, caseStrength: 6, intel: ["You start hunting for persistence: recently modified files, odd upload artifacts, unexpected outbound connections."] },
+                next: "web_verify",
+                show: (s) => !s.flags.scopedQuiet,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Hand it up with the channel partly contained.",
+                effect: { clock: 8 },
+                next: "web_warroom",
+            },
+        ],
+    },
+    web_complacent: {
+        id: "web_complacent",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Wed 15:40",
+        title: "By the Time You Look",
+        body: [
+            "You wait for proof, and the proof arrives in the worst possible form. By mid-afternoon the researcher, tired of being ignored, has posted the full dataset to a breach forum to make their point. A hundred and twenty thousand of your customers are now a free download with your company's name in the title.",
+            "A journalist who watches that forum emails your press alias for comment. The thing you treated as an unconfirmed nuisance is now a public breach you learned to take seriously from a reporter, which is the single worst way to learn it.",
+        ],
+        intelReveal: [
+            "BAD: the full 120,000-record dataset is now posted publicly on a breach forum.",
+            "CONFIRMED: a journalist is requesting comment. The breach is public before you briefed anyone.",
+            "The SQL injection flaw and any web shell remain unaddressed.",
+        ],
+        onEnter: () => ({ caseStrength: -10, dataExposure: 20, set: ["dumpPublic", "dumpGrew", "confirmedExposure"], trust: { eng: -6, exec: -8 } }),
+        choices: [
+            {
+                label: "Escalate hard to the Incident Commander; you are already behind",
+                detail: "No more solo calls. Get the room and get ahead of the story.",
+                effect: { clock: 10 },
+                next: "web_warroom",
+            },
+        ],
+    },
+    // ─────────────────────────── ACT 2 - INCIDENT COMMANDER ─────────────────────
+    web_warroom: {
+        id: "web_warroom",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed afternoon",
+        title: "The Room",
+        body: [
+            "You are running it now. The room assembles with the usual competing gravities. Sofia, the engineering lead, wants the portal back and keeps translating downtime into lost orders per minute. Priya from Legal is already saying the words breach notification and PCI, and wants nobody to redeploy anything until the scope is nailed down. The CEO has done their own math and would prefer this be small, quiet, and resolved before it needs a press line.",
+            "Everyone wants a different first move. You only get to pick one.",
+        ],
+        onEnter: (s) => {
+            const reveal = [];
+            if (s.flags.complacent) reveal.push("BAD: the dump is already circulating publicly. You are responding to a breach the internet found before you did.");
+            else if (s.flags.takenDown) reveal.push("The portal is dark, which stops the bleeding and lights up every status-page watcher. Engineering wants a timeline to bring it back.");
+            else if (s.flags.wafBlocked) reveal.push("The WAF rule is holding the obvious payload, but the app is still serving and a web shell, if one exists, does not care about your filter.");
+            else reveal.push("The portal is still live and still unproven-clean. Every hour it serves traffic is an hour of unmeasured risk.");
+            if (!s.flags.confirmedExposure) reveal.push("(unconfirmed) The true scope of what was taken has not been established.");
+            return { intel: reveal };
+        },
+        choices: [
+            {
+                label: "Engage an external DFIR firm and brief breach counsel",
+                detail: "Bring in specialists, scope it to an admissible standard, get Legal ahead of it.",
+                effect: { clock: 60, caseStrength: 12, set: ["firmEngaged"], trust: { legal: 12, exec: -6 }, intel: ["You retain a DFIR firm and put breach counsel on the call. Slower to start, far stronger footing."] },
+                next: "web_forensics",
+            },
+            {
+                label: "Drive an in-house fix: patch, redeploy, rotate, move fast",
+                detail: "Your team is fast and wants to fight. Depends on how well you scoped it.",
+                effect: { clock: 20, trust: { eng: 8 } },
+                next: "web_inhouse",
+            },
+            {
+                label: "Keep it quiet; handle it internally and protect the brand",
+                detail: "The CEO's preference. Legal winces. The clock on the obligations keeps running.",
+                effect: { clock: 25, caseStrength: -6, set: ["quietHandling"], trust: { eng: 6, legal: -12 }, intel: ["The decision is to keep it small and internal for now, and revisit if it grows."] },
+                next: "web_quiet",
+            },
+        ],
+    },
+    web_forensics: {
+        id: "web_forensics",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed evening",
+        title: "Professionals",
+        body: [
+            "The firm works with the unhurried competence of people who do this every week. They confirm and bound the exfiltration, walk the attacker's path through the logs, and find the web shell you might have missed in an upload directory along with a second, dormant one nobody had spotted.",
+            "They remove the persistence, give you a precise record of what left and when, and hand you the sentence that matters: the injection flaw is still in the code, and a clean app is not a fixed app.",
+        ],
+        intelReveal: ["DFIR firm scoped the breach and removed two web shells. Exfiltration bounded; persistence eradicated."],
+        onEnter: () => ({ caseStrength: 10, dataExposure: -14, set: ["webShellFound", "eradicated", "confirmedExposure", "exfilScoped"], clear: ["persistenceRemained"], intel: ["The attacker's access is closed and the scope is now a known quantity rather than a fear."] }),
+        choices: [
+            {
+                label: "Fix the root cause: parametrize the queries, code review, secure SDLC",
+                detail: "Close the class of bug, not just this instance. The disciplined finish.",
+                effect: { clock: 40, caseStrength: 8, dataExposure: -6, set: ["rootCauseFixed"], trust: { legal: 6, eng: 4 }, intel: ["You fix the injection at the source, audit the codebase for siblings, and put input handling into the review checklist."] },
+                next: "web_resolution",
+            },
+            {
+                label: "Declare it eradicated and move to the disclosure decision",
+                detail: "The door is shut and the scope is known. Good enough for now.",
+                effect: { clock: 15 },
+                next: "web_resolution",
+            },
+        ],
+    },
+    web_inhouse: {
+        id: "web_inhouse",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed evening",
+        title: "In-House",
+        body: [
+            "Your own engineers know this codebase better than any outside firm will in a week, and they are itching to ship a fix and turn the lights back on. The quality of what happens next depends entirely on one thing: whether anyone actually mapped what the attacker did before reaching for a patch.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.scopedQuiet || s.flags.preservedEvidence || s.flags.forensicsClean) {
+                return { caseStrength: 8, set: ["eradicated"], clear: ["persistenceRemained"], intel: ["Because you had already mapped the intrusion, the fix also removes the web shell and closes the door behind it. The app comes back genuinely clean."] };
+            }
+            return { set: ["persistenceRemained"], intel: ["(unconfirmed) You are patching the bug you can see, but nobody mapped what the attacker left behind. A web shell could still be sitting in an upload folder, untouched by your fix."] };
+        },
+        choices: [
+            {
+                label: "Hotfix the injection and bring the portal back now",
+                detail: "Fast restore. Dangerous if a web shell survived the patch.",
+                effect: { clock: 15, trust: { eng: 8, exec: 6 } },
+                next: (s) => (s.flags.persistenceRemained ? "web_reattack" : "web_resolution"),
+            },
+            {
+                label: "Slow down: parametrize the queries, full code review, rebuild the service, rotate secrets",
+                detail: "Do it properly. Costs hours, closes the class of bug and any foothold.",
+                effect: { clock: 50, caseStrength: 12, dataExposure: -12, set: ["eradicated", "rootCauseFixed"], clear: ["persistenceRemained"], trust: { eng: -4, legal: 6 }, intel: ["You take the outage hit and rebuild the service on parametrized queries, hunt the upload directories, and rotate the database and app secrets."] },
+                next: "web_resolution",
+            },
+        ],
+    },
+    web_quiet: {
+        id: "web_quiet",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed evening",
+        title: "Keeping It Small",
+        body: [
+            "Quiet has a half-life. The researcher who tipped you off is still out there, unthanked and unanswered, with the full dataset and a sense of grievance. Your cyber-insurance policy has a prompt-notification clause that is quietly ticking. And every hour the flaw stays unfixed is an hour the same door stays open to the next person who finds it.",
+            "Discretion felt like control. It is starting to feel like a delay you will have to explain later.",
+        ],
+        intelReveal: ["Insurer notification window is running. Late notice can become grounds to weaken or deny a claim."],
+        onEnter: () => ({ dataExposure: 10, set: ["lateNotice"] }),
+        choices: [
+            {
+                label: "Reverse course: bring in the DFIR firm and counsel properly",
+                detail: "Better late than never, though late has a cost.",
+                effect: { clock: 25, caseStrength: 6, set: ["firmEngaged"], trust: { legal: 6 }, intel: ["You stop trying to keep it small and stand up a real response."] },
+                next: "web_forensics",
+            },
+            {
+                label: "Have the team force a password reset and patch it internally",
+                detail: "Reset customer credentials, fix what you can, keep it in-house.",
+                effect: { clock: 15, trust: { eng: 4 }, intel: ["You push a global customer password reset and ask engineering to quietly patch the endpoint."] },
+                next: "web_inhouse",
+            },
+            {
+                label: "Patch the one bug quietly and close it out; tell no one",
+                detail: "Make it disappear. No firm, no notice, no lessons.",
+                effect: { clock: 20, dataExposure: 4, set: ["superficialFix"], trust: { legal: -6 }, intel: ["A single hotfix goes in. The incident is, officially, not one. Nobody measured what left, and nobody looked for what stayed."] },
+                next: "web_resolution",
+            },
+        ],
+    },
+    web_reattack: {
+        id: "web_reattack",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Thu 02:30",
+        title: "Through the Door You Left",
+        body: [
+            "You patched the injection and declared it handled. For a few hours it looked like a win. Then, at half past two in the morning, the web shell nobody removed wakes up. The attacker walks back in through their own door, re-dumps the freshly reset credentials, and this time leaves a defacement on the login page so there is no arguing about whether you were breached.",
+            "The flaw was the way in. The web shell was the way back. You closed the first and ignored the second, and the second is the one that decides whether this is one incident or two.",
+        ],
+        intelReveal: ["SECOND BREACH: the un-removed web shell was used to re-enter, re-dump data, and deface the portal."],
+        onEnter: () => ({ caseStrength: -14, dataExposure: 26, set: ["secondBreach"], trust: { eng: -12, exec: -14 } }),
+        choices: [
+            {
+                label: "Take the compounded mess to the executive table",
+                detail: "There is no clean version of this now. Move to the fallout.",
+                effect: { clock: 30 },
+                next: "web_resolution",
+            },
+        ],
+    },
+    // ──────────────────────────────── ACT 3 - CISO ──────────────────────────────
+    web_resolution: {
+        id: "web_resolution",
+        act: 3,
+        role: "CISO",
+        clockLabel: "The following days",
+        title: "The Notification",
+        body: [
+            "You are in the CISO's seat now and the question is no longer technical. A hundred and twenty thousand people's data was, at minimum, exposed and very likely taken. There are notification laws with clocks of their own, payment-card obligations attached to those tokens, and customers who will find out one way or another.",
+            "What you choose to say, and when, will outlive every technical decision you made this week.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.secondBreach) {
+                return { intel: ["FINAL REPORT: a second breach through the surviving web shell widened the loss and the data was published. There is nothing left to keep quiet about."] };
+            }
+            if (s.flags.eradicated && s.dataExposure < 40) {
+                return { intel: ["FINAL REPORT: the breach is scoped and contained, the flaw and the persistence are closed. ~120k records were exposed; you can speak to it precisely."] };
+            }
+            return { intel: ["FINAL REPORT: the picture is partial. You cannot fully bound what left or rule out lingering access. Any statement you make is made in fog."] };
+        },
+        choices: [
+            {
+                label: "Notify affected customers, the card brands, and regulators now",
+                detail: "Transparent, costly, and the defensible high road.",
+                effect: { clock: 30, set: ["disclosedProperly"], trust: { legal: 10, exec: -6 } },
+                next: (s) => resolveWebEnding(s, "proactive"),
+            },
+            {
+                label: "Disclose the legal minimum, quietly, on the latest allowable timeline",
+                detail: "Limit the blast radius. Legal's nervous compromise.",
+                effect: { clock: 20, trust: { exec: 6, legal: -2 } },
+                next: (s) => resolveWebEnding(s, "minimal"),
+            },
+            {
+                label: "Decline to disclose; argue it was contained before real exposure",
+                detail: "Only defensible if you truly contained it. Otherwise a gamble against the clock.",
+                effect: { clock: 15, trust: { exec: 8 } },
+                next: (s) => resolveWebEnding(s, "none"),
+            },
+        ],
+    },
+    // ──────────────────────────────── ENDINGS ───────────────────────────────────
+    ending_web_textbook: {
+        id: "ending_web_textbook",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Closed Clean",
+        isEnding: true,
+        endingTitle: "Outcome: Caught, Closed, and Disclosed",
+        endingTone: "win",
+        body: [
+            "You treated a researcher's email like the gift it was, scoped the breach instead of guessing at it, found and removed the web shell instead of just patching the hole it came through, and fixed the class of bug rather than the one instance. Then you told your customers the truth on your own timeline instead of theirs.",
+            "The dataset still exists somewhere, because that is how breaches work, but the story is a company that found a flaw, closed it properly, and was straight with the people it affected. Regulators read candor as competence, and that is what they got.",
+            "Nobody outside the room will know how quietly this could have gone wrong. That is the job: a breach that becomes a footnote instead of a headline.",
+        ],
+    },
+    ending_web_recovered: {
+        id: "ending_web_recovered",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Contained, the Costly Way",
+        isEnding: true,
+        endingTitle: "Outcome: Contained, But It Left Marks",
+        endingTone: "mixed",
+        body: [
+            "You shut the door and disclosed like an adult, which is most of the win. But the path was rougher than it needed to be: a hard outage you could have scoped your way out of, a root cause left half-addressed, or trust spent in the room that you will be earning back for a quarter.",
+            "The incident is closed and the honest summary holds: breach contained, customers notified, flaw remediated. The footnotes are where the real story lives, and a few runbooks are about to get rewritten because of them.",
+            "A win. Just not the kind that goes in the awareness deck.",
+        ],
+    },
+    ending_web_messy: {
+        id: "ending_web_messy",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Survived, with Footnotes",
+        isEnding: true,
+        endingTitle: "Outcome: Survived, the Hard Way",
+        endingTone: "mixed",
+        body: [
+            "You came out the other side. The portal is back, the company is operating, and the worst-case headlines did not arrive, or at least have not yet. Somewhere in the middle of it the response left loose ends: a scope never fully bounded, a fix that may not have reached the root, a notification that went out a little thinner than it should have.",
+            "None of it sank you. The after-action will be long and a little uncomfortable, with a column of we-should-haves that were genuinely hard in the moment.",
+            "You did not lose. You paid tuition.",
+        ],
+    },
+    ending_web_second_breach: {
+        id: "ending_web_second_breach",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "You Patched the Symptom",
+        isEnding: true,
+        endingTitle: "Outcome: You Fixed the Hole and Left the Door",
+        endingTone: "loss",
+        body: [
+            "You closed the injection flaw and called it done, which would have been right if the flaw were the only thing the attacker left. It was not. A web shell sat in an upload directory the whole time, and a patch does not touch a web shell. They came back through it, re-took the freshly reset data, and left a defacement so nobody could pretend otherwise.",
+            "Eradication in a web breach is not the patch. It is the hunt for what they planted, the persistence a fix does not reach. You learned that the way it is usually learned: from the second incident, which is always worse and always avoidable.",
+            "One breach is a bad week. Two from the same access is a finding with your name on it.",
+        ],
+    },
+    ending_web_undisclosed: {
+        id: "ending_web_undisclosed",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "The Notice You Never Sent",
+        isEnding: true,
+        endingTitle: "Outcome: You Sat on a Confirmed Breach",
+        endingTone: "loss",
+        body: [
+            "You confirmed that a hundred and twenty thousand people's data was taken, and then you decided not to tell them. Maybe the technical cleanup was even decent. It does not matter, because the part the regulators care about is the part you chose to skip.",
+            "It surfaces the way these always do: a customer's identity is misused and traced back, or the researcher loses patience, or the dataset turns up for sale. The notification you declined to send becomes the omission you have to explain, and explaining a deliberate silence is worse than any disclosure would have been.",
+            "The breach was someone else's crime. The cover-up was your decision.",
+        ],
+    },
+    ending_web_public: {
+        id: "ending_web_public",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Page One",
+        isEnding: true,
+        endingTitle: "Outcome: It Became Public Before You Were Ready",
+        endingTone: "loss",
+        body: [
+            "The data was out and the response never caught up to it. The flaw stayed open too long, the scope stayed fuzzy, and the dataset found an audience while you were still deciding how much to say. By the time you spoke, the story had already been written by someone else.",
+            "Regulators take an interest in the timeline. A reporter takes an interest in the regulators. Customers take an interest in alternatives. The attacker who exploited a single unparameterized query is a footnote now; the headline is a company that was slow.",
+            "The bug was a bad day. The pace of the response is what becomes the case study.",
+        ],
+    },
+    ending_web_warned: {
+        id: "ending_web_warned",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "You Were Warned",
+        isEnding: true,
+        endingTitle: "Outcome: You Treated the Tip as Noise",
+        endingTone: "loss",
+        body: [
+            "Someone handed you the breach on a plate, politely, with a sample attached, and you decided it was probably nothing. While you waited for proof you could be sure of, the person who warned you got tired of waiting and published the lot. You learned the severity of your own incident from a breach forum and a journalist's inbox.",
+            "Everything you did afterward was technically reasonable and entirely too late. The dump was public, the customers were exposed, and the one fact that follows you out of every review is that you had the warning early and chose to sit on it.",
+            "The flaw was the attacker's. The delay was yours, and the delay is the part people remember.",
+        ],
+    },
+};
+function resolveWebEnding(s, disclosure) {
+    var dataOut = s.dataExposure >= 50 || s.flags.dumpGrew || s.flags.secondBreach;
+    if (s.flags.secondBreach) return "ending_web_second_breach";
+    if (disclosure === "none" && s.flags.confirmedExposure) { s.flags.concealed = true; return "ending_web_undisclosed"; }
+    if (s.flags.complacent && s.flags.dumpPublic) return "ending_web_warned";
+    if (dataOut && !s.flags.eradicated) { if (disclosure === "none") s.flags.recklessNoDisclosure = true; return "ending_web_public"; }
+    if (s.flags.eradicated && s.flags.rootCauseFixed && disclosure !== "none" && s.dataExposure < 35 && avgOk(s)) { s.flags.recovered = true; return "ending_web_textbook"; }
+    if (s.flags.eradicated && disclosure !== "none") { s.flags.recovered = true; return "ending_web_recovered"; }
+    return "ending_web_messy";
+}
+function scoreAdjust(s) {
+    let delta = 0;
+    const wins = [];
+    const losses = [];
+    const avg = (s.trust.legal + s.trust.eng + s.trust.exec) / 3;
+    if (s.flags.contained) delta += 6;
+    if (s.flags.eradicated) delta += 8;
+    if (s.flags.rootCauseFixed) delta += 8;
+    if (s.flags.preservedEvidence) delta += 5;
+    if (s.flags.firmEngaged) delta += 4;
+    if (s.flags.disclosedProperly) delta += 5;
+    if (s.flags.secondBreach) delta -= 14;
+    if (s.flags.concealed) delta -= 12;
+    if (s.flags.recklessNoDisclosure) delta -= 12;
+    if (s.flags.persistenceRemained && !s.flags.eradicated) delta -= 8;
+    if (s.flags.complacent) delta -= 8;
+    if (s.flags.lateNotice) delta -= 6;
+    if (s.flags.eradicated) wins.push("You eradicated the attacker's access, removing the web shell rather than just patching the flaw.");
+    if (s.flags.rootCauseFixed) wins.push("You fixed the root cause: parametrized queries and a code review, closing the class of bug.");
+    if (s.flags.preservedEvidence) wins.push("You preserved forensic evidence before acting, keeping the investigation defensible.");
+    if (s.flags.firmEngaged) wins.push("You brought in specialists and counsel instead of improvising a regulated breach.");
+    if (s.flags.disclosedProperly) wins.push("You notified customers and regulators properly, keeping the story about the flaw and not a cover-up.");
+    if (s.flags.secondBreach) losses.push("You patched the flaw but left the web shell, and the attacker re-entered through it.");
+    if (s.flags.concealed) losses.push("You concealed a confirmed breach, turning a survivable incident into a credibility crisis.");
+    if (s.flags.persistenceRemained && !s.flags.eradicated) losses.push("You never hunted for persistence, so a web shell may still be sitting in your environment.");
+    if (s.flags.complacent) losses.push("You dismissed the early tip as noise and let the dataset go public on someone else's timeline.");
+    if (s.flags.lateNotice) losses.push("You delayed notification while keeping it quiet, weakening the insurance position and the optics.");
+    if (s.dataExposure >= 55) losses.push("A large volume of customer data was exposed and could not be recovered.");
+    if (avg < 45) losses.push("Stakeholder trust eroded. Engineering and Legal will both remember how this was run.");
+    return { delta, wins, losses };
+}
+exports.webBreachScenario = {
+    meta: {
+        id: "webbreach",
+        title: "Open Door",
+        codename: "Web Application Breach",
+        blurb: "A researcher emails you a sample of your own customer database, pulled through a flaw in your portal. The bug is still live and the clock on disclosure has already started.",
+        premise: "Your own monitoring caught nothing. A polite stranger caught everything: a SQL injection in your customer portal, 120,000 records already taken, and a web shell left behind for a return trip. You will work it from three seats: scope a breach you learned about secondhand, decide whether you have truly evicted the attacker or merely patched the hole they came through, and answer to customers and regulators for data that is already in the wild.",
+        difficulty: "Standard",
+        accent: "teal",
+        tags: ["Web Breach", "SQLi", "DFIR", "Disclosure"],
+        acts: 3,
+    },
+    firstScene: "web_start",
+    initialState: () => ({
+        scene: "web_start",
+        clock: 0,
+        caseStrength: 18,
+        dataExposure: 40,
+        trust: { legal: 55, eng: 55, exec: 55 },
+        flags: {},
+        intel: [],
+        log: [],
+    }),
+    scenes: SCENES,
+    meterLabels: {
+        primary1: "Containment",
+        primary2: "Data Exposure",
+        s1: "Legal / Reg.",
+        s2: "Engineering",
+        s3: "Executive",
+    },
+    scoreAdjust,
+};
+
+  return exports.webBreachScenario;
+})();
+
+const edgeZeroDayScenario = (function(){
+  const exports = {}; const module = { exports: exports };
+  const require = function(){ return {}; };
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.edgeZeroDayScenario = void 0;
+/**
+ * Scenario: "Hold the Line"
+ * An actively-exploited zero-day in an internet-facing appliance. Three seats:
+ *   Act 1  - SOC Analyst         (the advisory)
+ *   Act 2  - Incident Commander  (contain without a patch, hunt for a foothold)
+ *   Act 3  - CISO                (the vendor, the campaign, the disclosure)
+ *
+ * Ground truth: a pre-authentication remote code execution flaw in the Aegis
+ * Gateway (your internet-facing VPN / remote-access appliance from vendor Helios
+ * Networks) is being mass-exploited in the wild. There is no patch yet, only
+ * interim mitigations. The appliance is the company's front door for remote work
+ * and runs deep in the network. Attackers are dropping web shells at scale; some
+ * victims already have hands-on intrusions. The central trap: once a patch ships,
+ * applying it does NOT remove an implant the attacker already planted. Patching
+ * the vulnerability and evicting the attacker are two different jobs.
+ */
+function avgOk(s) { return (s.trust.legal + s.trust.eng + s.trust.exec) / 3 >= 48; }
+const SCENES = {
+    // ───────────────────────────── ACT 1 - SOC ANALYST ─────────────────────────
+    eg_start: {
+        id: "eg_start",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 07:50",
+        title: "No Patch Yet",
+        body: [
+            "It lands as a threat-intel advisory with the worst combination of words in the trade: pre-authentication, remote code execution, actively exploited, no patch available. The product is the Aegis Gateway from Helios Networks, the appliance that terminates your VPN and fronts remote access for the entire company. You have two of them, internet-facing, exactly as designed.",
+            "The advisory says attackers are mass-scanning and dropping web shells, and that some victims already show hands-on intrusion past the appliance. The vendor has acknowledged the flaw and promised a fix in days, with only interim mitigations until then.",
+            "The vulnerability is certainly reachable from the internet. Whether someone has already used it against you, specifically, is the question nobody can answer at 07:50 on a Tuesday.",
+        ],
+        intelReveal: [
+            "Aegis Gateway pre-auth RCE actively exploited in the wild. No patch available yet.",
+            "You run two internet-facing Aegis Gateways terminating company VPN and remote access.",
+            "(unconfirmed) Attackers are dropping web shells at scale; whether you are already compromised is unknown.",
+        ],
+        choices: [
+            {
+                label: "Hunt your appliances and logs for compromise right now",
+                detail: "Find out if you were actually hit before you decide anything else.",
+                effect: { clock: 40, caseStrength: 12, set: ["hunted"], intel: ["You start hunting on the gateways themselves: the vendor's IoCs, unexpected files, anomalous sessions, outbound connections that should not exist."] },
+                next: "eg_hunt",
+            },
+            {
+                label: "Apply the vendor's interim mitigation immediately",
+                detail: "Disable the vulnerable feature and ACL the management interface. Fast, partial.",
+                effect: { clock: 20, dataExposure: -6, caseStrength: 6, set: ["mitigated"], intel: ["You apply the workaround: the exploitable component is disabled and the management plane is locked to known addresses. The easy version of the attack stops."] },
+                next: "eg_mitigate",
+            },
+            {
+                label: "Pull both appliances offline — kill remote access entirely",
+                detail: "Shut the front door. Maximum containment, and nobody works remotely until it is back.",
+                effect: { clock: 15, dataExposure: -10, set: ["offline", "contained"], trust: { eng: -12, exec: -6 }, intel: ["You power down both gateways. The exposure is gone. So is VPN, remote desktop, and the ability of half the company to do their jobs from home."] },
+                next: "eg_offline",
+            },
+            {
+                label: "Wait for the official patch; the vendor says days",
+                detail: "Let the people who built it tell you what to do. The exposure stays live meanwhile.",
+                effect: { clock: 180, dataExposure: 14, set: ["deferred"], intel: ["You hold for the patch. The hours pass. The advisory's victim count climbs, and your gateways keep facing the internet exactly as before."] },
+                next: "eg_wait",
+            },
+        ],
+    },
+    eg_hunt: {
+        id: "eg_hunt",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 09:10",
+        title: "Looking for the Foothold",
+        body: [
+            "You go looking for the difference between exposed and exploited. An appliance that is merely vulnerable is a risk; an appliance that has been popped leaves traces: a web shell where there should be none, a configuration changed out from under you, a session that started from somewhere impossible.",
+            "You find it. A web shell on one of the two gateways, planted four days ago, and the appliance's own integrity checker cheerfully reporting that everything is fine, because the implant tampered with the thing that was supposed to detect it. What you do not find, yet, is evidence they pivoted deeper. You may have caught it on the threshold.",
+        ],
+        intelReveal: [
+            "CONFIRMED: a web shell is present on one gateway, planted ~4 days ago.",
+            "The appliance's built-in integrity check was subverted and cannot be trusted.",
+            "(unconfirmed) No lateral movement past the gateway found yet. You may have caught it before they went hands-on.",
+        ],
+        onEnter: () => ({ caseStrength: 10, set: ["webshellFound", "dormantIntrusion"], intel: ["The box is compromised. The open question is whether they have done anything with it yet."] }),
+        choices: [
+            {
+                label: "Apply the mitigation and keep the gateway running while you respond",
+                detail: "Stop new exploitation; manage the existing foothold deliberately.",
+                effect: { clock: 15, dataExposure: -4, set: ["mitigated"], intel: ["You apply the workaround so no second attacker walks in while you deal with the first."] },
+                next: "eg_mitigate",
+                show: (s) => !s.flags.mitigated,
+            },
+            {
+                label: "Take the compromised gateway offline now",
+                detail: "It is popped and its integrity check lies. Stop trusting it.",
+                effect: { clock: 12, dataExposure: -8, set: ["offline", "contained"], trust: { eng: -8 }, intel: ["You isolate the compromised appliance. Remote access degrades, but you stop feeding a box you know is owned."] },
+                next: "eg_offline",
+                show: (s) => !s.flags.offline,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "You have a real read on the situation. Get the response organized.",
+                effect: { clock: 8 },
+                next: "eg_warroom",
+            },
+        ],
+    },
+    eg_mitigate: {
+        id: "eg_mitigate",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 08:30",
+        title: "A Workaround Is Not a Cure",
+        body: [
+            "The mitigation does what mitigations do: it raises the cost of getting in from here, and it does precisely nothing about anyone who is already inside. Disabling the vulnerable feature stops fresh exploitation. It does not remove a web shell that was planted yesterday, and it does not restore your ability to trust an appliance whose own self-check can be fooled.",
+            "You have bought time and narrowed the front door. Whether someone is already past it is still an open question.",
+        ],
+        choices: [
+            {
+                label: "Now hunt the appliances and logs for an existing foothold",
+                detail: "The workaround does not catch what is already inside. Go look.",
+                effect: { clock: 35 },
+                next: "eg_hunt",
+                show: (s) => !s.flags.hunted,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Hand it up with the exposure narrowed.",
+                effect: { clock: 8 },
+                next: "eg_warroom",
+            },
+        ],
+    },
+    eg_offline: {
+        id: "eg_offline",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 08:20",
+        title: "Front Door Shut",
+        body: [
+            "The gateways are dark and the internet-facing exposure is gone with them. It is the most certain containment available and the most expensive: remote access for the whole company is down, the help desk is drowning, and an executive who is travelling cannot get to anything.",
+            "You have stopped any new intrusion cold. What you have not done is find out whether one already happened, and a powered-off box is also a box you are not currently learning anything from.",
+        ],
+        intelReveal: ["Both gateways offline. New exploitation impossible; remote access down company-wide; existing-compromise question still open."],
+        choices: [
+            {
+                label: "Hunt the boxes and the network now that they are isolated",
+                detail: "Use the downtime to find out whether you were already hit.",
+                effect: { clock: 35 },
+                next: "eg_hunt",
+                show: (s) => !s.flags.hunted,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Own the call and organize what comes next.",
+                effect: { clock: 8 },
+                next: "eg_warroom",
+            },
+        ],
+    },
+    eg_wait: {
+        id: "eg_wait",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 14:30",
+        title: "Waiting Room",
+        body: [
+            "You wait, because the vendor surely knows their own product, and surely a patch is hours away. The hours are not hours. The advisory updates twice, each time with a longer list of confirmed-compromised organizations and a shorter set of reassurances, and the patch's promised date slips in the quiet way these dates do.",
+            "Meanwhile your two gateways have spent the day facing the internet with a publicly known, actively exploited, unpatched hole in them. Trusting the vendor to run your incident felt like the absence of a decision. It was a decision, and the clock charged you for it.",
+        ],
+        intelReveal: ["Patch delayed; confirmed-victim list growing. Hours of unmitigated exposure have elapsed while you waited."],
+        choices: [
+            {
+                label: "Stop waiting and escalate to the Incident Commander",
+                detail: "You have lost time you cannot get back. Get the response moving.",
+                effect: { clock: 10 },
+                next: "eg_warroom",
+            },
+        ],
+    },
+    // ─────────────────────────── ACT 2 - INCIDENT COMMANDER ─────────────────────
+    eg_warroom: {
+        id: "eg_warroom",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Tue, midday",
+        title: "Contain Without a Cure",
+        body: [
+            "You are running an incident where you cannot patch the vulnerable thing, cannot trust the vendor's timeline, and cannot keep the company working without the very appliance that is the problem. Raj from Operations points out, accurately, that the gateways are remote access for the entire workforce and that pulling them is a guaranteed outage in exchange for a maybe-breach. Priya from Legal wants to know if customer-reachable systems are involved and is reading the contract. The CEO, who is travelling and cannot connect, wants to know how bad it is and when it ends.",
+            "Nobody in the room can make the vendor ship a patch. You can only decide how hard to assume you have already been hit.",
+        ],
+        onEnter: (s) => {
+            if (!s.flags.dormantIntrusion && !s.flags.activeIntrusion) {
+                if (s.flags.deferred) {
+                    return { dataExposure: 12, set: ["activeIntrusion", "webshellFound"], trust: { exec: -6 }, intel: ["BAD: a belated hunt now finds what an early one would have caught cheaply. A web shell on one gateway, a new account, and lateral movement to a file server. While you waited, the actor went hands-on. This is an active intrusion."] };
+                }
+                return { set: ["dormantIntrusion"], intel: ["Scoping finds the implant present but no sign of hands-on movement past the gateway. You appear to have moved before they did."] };
+            }
+        },
+        choices: [
+            {
+                label: "Assume breach: rebuild the appliances, hunt the network, rotate every credential the gateway touched",
+                detail: "Treat the front door as fully compromised. Thorough, slow, expensive.",
+                effect: { clock: 90, caseStrength: 14, dataExposure: -8, set: ["assumedBreach"], trust: { legal: 10, exec: -4 }, intel: ["You stop hoping you got lucky: full network hunt, gateways slated for rebuild from clean firmware, and rotation of VPN credentials, LDAP bind accounts, and session secrets the appliance could have exposed."] },
+                next: "eg_eradicate",
+            },
+            {
+                label: "Mitigate and monitor: apply the workaround, watch closely, wait for the verified patch",
+                detail: "Measured. Fine if the implant is truly dormant. A bet if it is not.",
+                effect: { clock: 40, caseStrength: 4, trust: { eng: 8, exec: 4 }, set: ["containMonitor"], intel: ["You hold the mitigation, tighten monitoring around the gateways, and settle in to wait for a fix rather than tear the estate apart."] },
+                next: "eg_contain_monitor",
+            },
+            {
+                label: "Rip it out and stand up an emergency alternative remote-access path",
+                detail: "Leave the appliance behind entirely. Decisive, costly, ends the dependency.",
+                effect: { clock: 120, caseStrength: 10, dataExposure: -4, set: ["offline", "replaced", "eradicated", "secretsRotated", "opsPain"], trust: { eng: -10, legal: 6 }, intel: ["The decision is to abandon the Aegis Gateways: pull them, rotate the credentials they fronted, and stand up a temporary remote-access path on different tooling. It will hurt for weeks, but the betrayed front door is gone."] },
+                next: "eg_replace",
+            },
+        ],
+    },
+    eg_eradicate: {
+        id: "eg_eradicate",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Tue, evening",
+        title: "Assume the Worst",
+        body: [
+            "Assuming breach is miserable precisely because it is enormous work that you might, with luck, not have needed. You hunt the network, and you rotate everything an internet-facing appliance with deep reach could have handed over: VPN credentials, the directory bind accounts, session tokens, the lot. If they harvested keys, you are changing the locks before they can be turned.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.activeIntrusion) {
+                return { caseStrength: 12, dataExposure: -12, set: ["eradicated", "secretsRotated", "foundActive"], intel: ["The hunt pays off: you locate the hands-on activity, isolate the file server they reached, and rotate the credentials they had already grabbed. You caught a live intrusion and shut it down before it could spread."] };
+            }
+            return { caseStrength: 10, dataExposure: -8, set: ["eradicated", "secretsRotated"], intel: ["The hunt finds no hands-on movement, which is the good result. You rotate the at-risk credentials anyway, because a subverted appliance with deep reach is not a thing you take on faith."] };
+        },
+        choices: [
+            {
+                label: "Move to the patch decision",
+                detail: "The estate is being secured. The vendor's fix is the next trap.",
+                effect: { clock: 15 },
+                next: "eg_patch",
+            },
+        ],
+    },
+    eg_contain_monitor: {
+        id: "eg_contain_monitor",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed",
+        title: "The Waiting Game",
+        body: [
+            "Mitigate-and-monitor is the most reasonable-sounding option and the one that ages worst when you guessed wrong about dormant. You hold the workaround, watch the gateways, and wait for a patch you can trust.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.activeIntrusion) {
+                return { dataExposure: 22, caseStrength: -8, set: ["deepened"], intel: ["BAD: the implant was not dormant. While you watched and waited, the actor, already hands-on, finished moving laterally and staged data out through a path your monitoring noticed only after it mattered."] };
+            }
+            return { caseStrength: 4, intel: ["The implant stays quiet. The mitigation holds. You wait for the patch without further damage, having spent the credibility you would have lost if it had broken the other way."] };
+        },
+        choices: [
+            {
+                label: "Move to the patch decision",
+                detail: "The wait is for a fix you can trust. Now it arrives.",
+                effect: { clock: 15 },
+                next: "eg_patch",
+            },
+        ],
+    },
+    eg_replace: {
+        id: "eg_replace",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "The following days",
+        title: "Off the Appliance",
+        body: [
+            "Leaving entirely is the only option that never again asks you to trust a box that fooled its own integrity check, and it is brutal. Remote access limps along on a hastily stood-up replacement, the help desk runs hot for a week, and two projects slip while the team rebuilds instead of builds.",
+            "But the dependency is severed. Whatever Helios Networks does or fails to do next, their broken appliance is no longer your front door.",
+        ],
+        intelReveal: ["Aegis Gateways removed; temporary remote access stood up on alternative tooling. Operationally painful, strategically clean."],
+        choices: [
+            {
+                label: "Move to the resolution and the disclosure decision",
+                detail: "The appliance is gone. The accounting begins.",
+                effect: { clock: 20 },
+                next: "eg_resolution",
+            },
+        ],
+    },
+    eg_patch: {
+        id: "eg_patch",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Day 4",
+        title: "Patch Is Not Eviction",
+        body: [
+            "Helios ships the patch, with a press release about lessons learned and a strong suggestion that everyone update immediately and put this behind them. The patch closes the vulnerability. Here is the part the press release does not dwell on: closing the hole someone climbed through does not remove them from the building.",
+            "If an attacker already planted a web shell or harvested credentials, the patch leaves all of that exactly where it is. Patching the appliance and evicting the attacker are two different jobs, and only one of them is a download.",
+        ],
+        choices: [
+            {
+                label: "Apply the patch and consider the incident closed",
+                detail: "The hole is shut. Trust that closing it is the same as being clean.",
+                effect: { clock: 20, trust: { eng: 8, exec: 8 }, set: ["patchedOnly"], intel: ["You push the patch across both gateways and call it done, on the assumption that a closed vulnerability is a clean appliance."] },
+                next: (s) => (s.flags.webshellFound && !s.flags.eradicated) ? "eg_persists" : "eg_resolution",
+            },
+            {
+                label: "Patch and rebuild the appliances from clean firmware before trusting them",
+                detail: "Close the hole and remove anyone already inside. Slower, correct.",
+                effect: { clock: 50, caseStrength: 10, dataExposure: -8, set: ["verifiedClean", "eradicated", "secretsRotated"], clear: ["persistenceRemained"], trust: { legal: 8, eng: -2 }, intel: ["You patch and then wipe and rebuild the gateways from known-good firmware, rotating their secrets, on the principle that a box you cannot trust is one you replace rather than repair."] },
+                next: "eg_resolution",
+            },
+            {
+                label: "Stay off the appliances until you have fully validated them",
+                detail: "Run on the alternative path rather than re-extend trust prematurely.",
+                effect: { clock: 30, caseStrength: 4, set: ["stayedOff", "opsPain"], trust: { eng: -6, legal: 6 }, intel: ["You decline to put the gateways back into service yet, accepting degraded remote access over a premature return to a platform that earned its suspicion."] },
+                next: "eg_resolution",
+            },
+        ],
+    },
+    eg_persists: {
+        id: "eg_persists",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Day 6",
+        title: "Still Inside",
+        body: [
+            "For two days the patched gateways look like the end of it. Then the activity resumes from inside the network, using the web shell and the credentials the patch never touched. You closed the vulnerability and left the attacker their foothold, and a foothold does not need a vulnerability once it is established.",
+            "The technical failure is a skipped eradication step. The deeper failure is conceptual: you treated a patch as if it were an eviction. In an actively-exploited intrusion, the question was never only how did they get in, but are they still here, and you answered the first and ignored the second.",
+        ],
+        intelReveal: ["PERSISTENCE: the patch closed the flaw but the attacker's web shell and stolen credentials survived. They are still inside."],
+        onEnter: () => ({ caseStrength: -16, dataExposure: 26, set: ["persisted"], trust: { legal: -10, exec: -12 } }),
+        choices: [
+            {
+                label: "Take it to the executive table and start the eviction properly",
+                detail: "There is no fast path left. Move to the fallout.",
+                effect: { clock: 30 },
+                next: "eg_resolution",
+            },
+        ],
+    },
+    // ──────────────────────────────── ACT 3 - CISO ──────────────────────────────
+    eg_resolution: {
+        id: "eg_resolution",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "Victim, and Maybe a Conduit",
+        body: [
+            "The technical incident is settling. The disclosure one is not. You were one of thousands of organizations exposed by the same campaign, a genuine victim of a vendor's flaw. But a perimeter appliance with deep reach is also a place a real intrusion can spread from into systems your customers and partners depend on.",
+            "You spent this week wishing the vendor and the broader community had told you sooner and more plainly. Now the same decision is yours to make about the people downstream of you.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.persisted) return { intel: ["FINAL: the attacker survived the patch and the board wants to know why closing the hole was mistaken for clearing the house."] };
+            if (s.flags.deepened) return { intel: ["FINAL: data was staged and exfiltrated during the monitoring window. The intrusion was real and it cost you."] };
+            if (s.flags.foundActive) return { intel: ["FINAL: a live, hands-on intrusion was caught and evicted. It was real, and you got to it in time."] };
+            if (s.flags.offline && !s.flags.eradicated) return { intel: ["(unconfirmed) You shut the front door but never fully hunted. Whether you were compromised first is a question you cannot now answer."] };
+            return { intel: ["FINAL: no confirmed hands-on compromise in your environment. The implant was present; you appear to have moved before it was used."] };
+        },
+        choices: [
+            {
+                label: "Disclose proactively to customers, partners, and regulators as warranted",
+                detail: "Be the vendor you wish Helios had been.",
+                effect: { clock: 30, set: ["disclosedProperly"], trust: { legal: 10, exec: -6 } },
+                next: (s) => resolveEgEnding(s, "proactive"),
+            },
+            {
+                label: "Disclose the minimum strictly required, to only those strictly owed it",
+                detail: "Narrow and careful. Legal's cautious line.",
+                effect: { clock: 20, trust: { exec: 6, legal: -2 } },
+                next: (s) => resolveEgEnding(s, "minimal"),
+            },
+            {
+                label: "Say nothing externally; treat it as an internal IT matter",
+                detail: "Bet that your compromise, if any, never reached anyone downstream.",
+                effect: { clock: 10, trust: { exec: 8, legal: -12 } },
+                next: (s) => resolveEgEnding(s, "none"),
+            },
+        ],
+    },
+    // ──────────────────────────────── ENDINGS ───────────────────────────────────
+    ending_eg_textbook: {
+        id: "ending_eg_textbook",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Held the Line",
+        isEnding: true,
+        endingTitle: "Outcome: One of Thousands, Treated as the One",
+        endingTone: "win",
+        body: [
+            "You could not patch the flaw, so you did the harder thing: you hunted before you were told whether you were a victim, you treated a subverted appliance as fully compromised and rebuilt rather than repaired it, and crucially you refused to mistake the vendor's patch for an eviction. You closed the hole and you cleared the house, which are not the same job, and you knew it.",
+            "The intrusion never got to be anything more than a foothold. You verified your way back to trusting your own front door instead of hoping your way there, and you told your downstream the truth because you had just learned, viscerally, what silence upstream feels like.",
+            "Edge zero-days are won by the victims who refuse to be passengers in their own incident. You drove.",
+        ],
+    },
+    ending_eg_contained_active: {
+        id: "ending_eg_contained_active",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Caught a Live One",
+        isEnding: true,
+        endingTitle: "Outcome: It Was Real, and You Shut It Down",
+        endingTone: "mixed",
+        body: [
+            "This one was not a drill. The actor had gone hands-on past the gateway, and the only reason it is a contained incident instead of a catastrophe is that you assumed breach, hunted like you meant it, and rotated the credentials they had already taken before they could be used at scale.",
+            "It cost you: a real intrusion, a real eviction, a credential rotation across the estate, and a stretch where you did not know how deep it went. But you found the live access and closed it, refused to trust the patched box on faith, and told the people who needed telling. That is a genuine save on the hardest version of this incident.",
+            "You did not get lucky. You got thorough, on the day it counted.",
+        ],
+    },
+    ending_eg_messy: {
+        id: "ending_eg_messy",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Through It, Barely",
+        isEnding: true,
+        endingTitle: "Outcome: Survived, with Open Questions",
+        endingTone: "mixed",
+        body: [
+            "You got through it. The gateways are handled one way or another, remote access is stabilizing, and the worst-case scenarios did not arrive, or at least have not announced themselves yet. There is a residue of uncertainty: a hunt not fully run, a credential set not fully rotated, an appliance left in an awkward half-trusted state.",
+            "The after-action will be long, full of we-should-haves that are obvious now and were genuinely hard under a vendor's drip-feed and an operations team's reasonable objections. None of it sank you. Some of it will keep you up later.",
+            "Not a clean save. A survived incident with a to-do list that is really a list of next time.",
+        ],
+    },
+    ending_eg_persisted: {
+        id: "ending_eg_persisted",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Patched, Still Owned",
+        isEnding: true,
+        endingTitle: "Outcome: You Mistook a Patch for an Eviction",
+        endingTone: "loss",
+        body: [
+            "You applied the vendor's patch across the gateways and declared the incident closed, which would have been right if the attacker were still standing outside the locked door. They were not. They had a web shell and your credentials, planted before the patch existed, and a patch does not reach back in time to remove an implant.",
+            "The whole campaign worked on organizations that conflated two different jobs: closing the vulnerability and clearing the intruder. You did the first, congratulated yourself, and skipped the second, and the second is the one that decides whether you are still owned. In an active intrusion, are they still here is the only question that was ever load-bearing.",
+            "The flaw was the vendor's. Assuming the download fixed it was the finding.",
+        ],
+    },
+    ending_eg_deepened: {
+        id: "ending_eg_deepened",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "While You Watched",
+        isEnding: true,
+        endingTitle: "Outcome: Contained, Monitored, and Exfiltrated",
+        endingTone: "loss",
+        body: [
+            "Mitigate-and-monitor is a fine strategy for an implant that is genuinely dormant and a quiet disaster for one that is not. Yours was not. While you held the workaround and watched and waited for a patch you could trust, the actor, already hands-on, finished moving and walked the data out through a path your monitoring flagged shortly after it was complete.",
+            "The telemetry worked exactly as designed, which is the painful part: it described the exfiltration in detail, just too late to prevent it. Against a present-but-quiet foothold on a perimeter box, watching is not a neutral choice. It is a bet that they have not started, and you had no basis to make it.",
+            "You had the data. What you needed was the assumption that you were already too late, and the hunt that assumption demands.",
+        ],
+    },
+    ending_eg_blind: {
+        id: "ending_eg_blind",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Dark, and None the Wiser",
+        isEnding: true,
+        endingTitle: "Outcome: You Pulled the Plug and Learned Nothing",
+        endingTone: "loss",
+        body: [
+            "Pulling the gateways felt like the strong move, and against new exploitation it was. But you killed remote access for the whole company and then never did the unglamorous work of hunting the network and rotating the credentials the appliance fronted. You traded a maybe-compromise for a definite outage, and in the outage you never answered the question that started the incident.",
+            "Operations spent the week locked out and furious, and at the end of it you still cannot say whether the attacker was already inside before you cut the cord, because a powered-off box you never imaged tells you nothing. Removing the exposure and securing the environment are different jobs. You did the loud one and skipped the one that mattered.",
+            "Decisive is not the same as done. You were decisive about the wrong half.",
+        ],
+    },
+    ending_eg_undisclosed: {
+        id: "ending_eg_undisclosed",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "The Silent Conduit",
+        isEnding: true,
+        endingTitle: "Outcome: You Became the Vendor You Resented",
+        endingTone: "loss",
+        body: [
+            "You were compromised through a vendor who stayed quiet too long, and then, with a real foothold in your own environment, you made the identical choice toward your customers: a genuine intrusion on a perimeter appliance, reframed as an internal IT matter, disclosed to no one. The symmetry is not subtle.",
+            "It surfaces the way these do, through a customer whose own incident traces back through you, and now the conversation is not about a zero-day you were a victim of. It is about a compromise you concealed from the people who trusted you, exactly as Helios concealed it from you, while you were in the room being furious about it.",
+            "The flaw made you a victim. The silence made you a link in the chain. Only one of those was your decision.",
+        ],
+    },
+};
+function resolveEgEnding(s, disclosure) {
+    if (s.flags.persisted) return "ending_eg_persisted";
+    if (disclosure === "none" && (s.flags.activeIntrusion || s.flags.deepened || s.flags.webshellFound)) { s.flags.concealed = true; return "ending_eg_undisclosed"; }
+    if (s.flags.deepened) return "ending_eg_deepened";
+    if (s.flags.offline && !s.flags.eradicated && !s.flags.foundActive) return "ending_eg_blind";
+    if (s.flags.eradicated && s.flags.secretsRotated && (s.flags.verifiedClean || s.flags.stayedOff || s.flags.replaced) && disclosure !== "none" && avgOk(s)) {
+        return s.flags.activeIntrusion ? "ending_eg_contained_active" : "ending_eg_textbook";
+    }
+    return "ending_eg_messy";
+}
+function scoreAdjust(s) {
+    let delta = 0;
+    const wins = [];
+    const losses = [];
+    const avg = (s.trust.legal + s.trust.eng + s.trust.exec) / 3;
+    if (s.flags.eradicated) delta += 6;
+    if (s.flags.secretsRotated) delta += 6;
+    if (s.flags.verifiedClean) delta += 6;
+    if (s.flags.hunted) delta += 3;
+    if (s.flags.foundActive) delta += 4;
+    if (s.flags.disclosedProperly) delta += 5;
+    if (s.flags.persisted) delta -= 16;
+    if (s.flags.concealed) delta -= 12;
+    if (s.flags.deepened) delta -= 10;
+    if (s.flags.offline && !s.flags.eradicated && !s.flags.hunted) delta -= 10;
+    if (s.flags.activeIntrusion && !s.flags.foundActive) delta -= 4;
+    if (s.flags.deferred) delta -= 4;
+    if (s.flags.opsPain) delta -= 3;
+    if (s.flags.hunted) wins.push("You hunted your own environment instead of waiting to be told whether you were a victim.");
+    if (s.flags.eradicated && s.flags.secretsRotated) wins.push("You treated the subverted appliance as full compromise and rotated the credentials it fronted.");
+    if (s.flags.foundActive) wins.push("You found and evicted a real, hands-on intrusion that a slower response would have missed.");
+    if (s.flags.verifiedClean) wins.push("You rebuilt the appliances from clean firmware rather than trusting the patch to evict the attacker.");
+    if (s.flags.replaced) wins.push("You ended the dependency on an appliance that had fooled its own integrity check.");
+    if (s.flags.disclosedProperly) wins.push("You disclosed downstream like the vendor you wish Helios had been.");
+    if (s.flags.persisted) losses.push("You applied the patch but never evicted the attacker, and their foothold survived it.");
+    if (s.flags.deepened) losses.push("You mitigated and monitored a live implant while it finished exfiltrating your data.");
+    if (s.flags.offline && !s.flags.eradicated && !s.flags.hunted) losses.push("You pulled the appliances offline but never hunted or rotated, ending the week blind and no wiser.");
+    if (s.flags.concealed) losses.push("You concealed a real compromise, becoming the silent conduit you resented in your own vendor.");
+    if (s.flags.deferred) losses.push("You waited on the vendor's patch while the gateways stayed exposed and the victim list grew.");
+    if (avg < 45) losses.push("Stakeholder trust eroded between the outage and the vendor fight. The next call will be harder to land.");
+    return { delta, wins, losses };
+}
+exports.edgeZeroDayScenario = {
+    meta: {
+        id: "edgezeroday",
+        title: "Hold the Line",
+        codename: "Edge Device Zero-Day",
+        blurb: "An actively-exploited zero-day hits the VPN appliance that is your company's front door. There is no patch yet, the vendor is slow, and pulling it offline locks everyone out.",
+        premise: "A pre-auth remote code execution flaw in your internet-facing remote-access appliance is being mass-exploited right now, and there is no patch. You cannot fix the vendor's code, you cannot keep the company working without the box, and you cannot tell yet whether you are already breached. You will work it from three seats: contain an exposure you cannot patch, decide whether to assume you have been hit, and learn the hardest lesson in the category, that applying the eventual patch is not the same as evicting an attacker who is already inside.",
+        difficulty: "Hard",
+        accent: "blue",
+        tags: ["Zero-Day", "Threat Hunting", "Perimeter", "Vendor Trust"],
+        acts: 3,
+    },
+    firstScene: "eg_start",
+    initialState: () => ({
+        scene: "eg_start",
+        clock: 0,
+        caseStrength: 14,
+        dataExposure: 35,
+        trust: { legal: 55, eng: 55, exec: 55 },
+        flags: {},
+        intel: [],
+        log: [],
+    }),
+    scenes: SCENES,
+    meterLabels: {
+        primary1: "Containment",
+        primary2: "Exposure",
+        s1: "Legal",
+        s2: "Operations",
+        s3: "Executive",
+    },
+    scoreAdjust,
+};
+
+  return exports.edgeZeroDayScenario;
+})();
+
+const cloudKeyScenario = (function(){
+  const exports = {}; const module = { exports: exports };
+  const require = function(){ return {}; };
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.cloudKeyScenario = void 0;
+/**
+ * Scenario: "Key to the Kingdom"
+ * A leaked cloud credential. Three seats:
+ *   Act 1  - SOC Analyst         (the cost alarm)
+ *   Act 2  - Incident Commander  (the blast radius)
+ *   Act 3  - CISO                (the bill, the blame, the breach)
+ *
+ * Ground truth: at 02:00 an engineer pushed long-lived AWS access keys for a CI
+ * pipeline (with far more privilege than they needed) to a public GitHub repo.
+ * Bots scraped them within minutes. The attacker spun up GPU instances across
+ * three regions to mine cryptocurrency, ran up a fast-climbing bill, created
+ * their own backdoor IAM users and roles for persistence, and read objects from
+ * an S3 bucket holding customer data exports. Deactivating the leaked keys does
+ * nothing about the principals the attacker created. Whether customer data left
+ * is mostly a function of how fast and how thoroughly you scope CloudTrail.
+ */
+function avgOk(s) { return (s.trust.legal + s.trust.eng + s.trust.exec) / 3 >= 48; }
+const SCENES = {
+    // ───────────────────────────── ACT 1 - SOC ANALYST ─────────────────────────
+    cl_start: {
+        id: "cl_start",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 02:40",
+        title: "The Bill Spikes",
+        body: [
+            "Two-forty in the morning, and two alarms fire within a minute of each other: a cloud cost anomaly screaming that compute spend is up several thousand percent, and a GuardDuty finding flagging API calls from an unfamiliar location using a set of your access keys.",
+            "You trace the keys in ninety seconds and your stomach drops. They are long-lived access keys for a CI pipeline, with administrative-grade permissions they never should have had, and a quick search finds them sitting in plain text in a public GitHub repository, committed at 02:00. Forty minutes ago. On the internet, forty minutes is several lifetimes; credential-scanning bots find a leaked key in under a minute.",
+            "Something is already in your cloud account, spending your money, with the keys to most of it.",
+        ],
+        intelReveal: [
+            "Cost anomaly: compute spend up several thousand percent in under an hour.",
+            "GuardDuty: API calls from an unfamiliar location using a CI pipeline's access keys.",
+            "The keys are long-lived, over-privileged, and were committed to a PUBLIC GitHub repo at 02:00.",
+        ],
+        choices: [
+            {
+                label: "Deactivate and delete the leaked keys, revoke sessions immediately",
+                detail: "Cut the obvious access now. Does nothing about anything the attacker created.",
+                effect: { clock: 10, caseStrength: 6, dataExposure: -6, set: ["keysRevoked", "contained"], intel: ["You deactivate the leaked access keys and revoke active sessions. The original door is shut."] },
+                next: "cl_revoke",
+            },
+            {
+                label: "Scope CloudTrail first: what did the keys do, what else was created?",
+                detail: "Understand the blast radius before you start swinging. The bill climbs meanwhile.",
+                effect: { clock: 35, caseStrength: 14, set: ["scoped"], intel: ["You pull CloudTrail and start reconstructing every action the keys took since 02:00."] },
+                next: "cl_scope",
+            },
+            {
+                label: "Kill the runaway compute now to stop the bleeding bill",
+                detail: "Terminate the mining fleet. Stops the money, ignores the access and the data.",
+                effect: { clock: 12, dataExposure: -2, set: ["killedCompute"], intel: ["You hunt down and terminate the unfamiliar instances. The cost graph stops climbing. Nothing else is addressed."] },
+                next: "cl_killcompute",
+            },
+            {
+                label: "Open an urgent AWS Support case and wait for their guidance",
+                detail: "Let the platform tell you what to do. The attacker keeps working meanwhile.",
+                effect: { clock: 150, dataExposure: 14, set: ["deferred"], intel: ["You file a severity-one support case and wait. The response is templated and slow. The keys stay live, the bill keeps climbing, the API calls keep coming."] },
+                next: "cl_defer",
+            },
+        ],
+    },
+    cl_revoke: {
+        id: "cl_revoke",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 02:55",
+        title: "Changing One Lock",
+        body: [
+            "The leaked keys are dead, which feels decisive and is, as far as it goes. The trouble is how far it goes. An attacker with administrative access for forty minutes does not keep relying on the key you are about to revoke; the first thing a competent one does is mint their own credentials, create their own users, leave their own way back in.",
+            "You shut the door you can see. Whether it is the only door is a question you have not yet asked the logs.",
+        ],
+        intelReveal: ["(unconfirmed) Original keys deactivated. If the attacker created their own IAM principals, your revocation changed nothing for them."],
+        choices: [
+            {
+                label: "Scope CloudTrail for what they created",
+                detail: "Find the backdoor users, roles, and keys before they are used.",
+                effect: { clock: 30, caseStrength: 12, set: ["scoped"] },
+                next: "cl_scope",
+                show: (s) => !s.flags.scoped,
+            },
+            {
+                label: "Kill the runaway mining compute",
+                detail: "Stop the bill while you work the rest.",
+                effect: { clock: 12, dataExposure: -2, set: ["killedCompute"] },
+                next: "cl_killcompute",
+                show: (s) => !s.flags.killedCompute,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Hand it up and organize the response.",
+                effect: { clock: 8 },
+                next: "cl_warroom",
+            },
+        ],
+    },
+    cl_scope: {
+        id: "cl_scope",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 03:25",
+        title: "Reading the Trail",
+        body: [
+            "CloudTrail tells the whole ugly story in timestamps. Within two minutes of the commit, the keys were used from a foreign IP. The attacker enumerated the account, spun up GPU instances in three regions for mining, and, because the keys were administrative, did the thing that actually matters: created a backdoor IAM user with its own access keys and an innocuously named role, so they keep their access even if the original keys die.",
+            "And there is the line you did not want to see. A series of GetObject calls against an S3 bucket named customer-exports. They did not just mine. They read your customer data.",
+        ],
+        intelReveal: [
+            "CONFIRMED: a backdoor IAM user and role were created within minutes, with their own access keys.",
+            "GPU mining instances launched across three regions; the bill is the least of it.",
+            "GetObject calls hit the 'customer-exports' S3 bucket. Customer data was accessed.",
+        ],
+        onEnter: () => ({ caseStrength: 10, dataExposure: 6, set: ["dataAccessed", "iamPersistence"], intel: ["This is no longer a billing incident. It is a data breach with attacker-controlled persistence."] }),
+        choices: [
+            {
+                label: "Now kill the keys, the backdoor principals, and the compute, all at once",
+                detail: "You can see everything they did. Remove all of it together.",
+                effect: { clock: 25, caseStrength: 8, dataExposure: -10, set: ["keysRevoked", "killedCompute", "eradicated", "contained", "secretsRotated"], clear: ["persistenceRemained"], intel: ["You revoke the leaked keys, delete the backdoor user and role, terminate the mining fleet, and lock the exposed bucket, in one coordinated move."] },
+                next: "cl_warroom",
+            },
+            {
+                label: "Escalate to the Incident Commander with the full picture",
+                detail: "You know exactly what happened. Get the response organized.",
+                effect: { clock: 8 },
+                next: "cl_warroom",
+            },
+        ],
+    },
+    cl_killcompute: {
+        id: "cl_killcompute",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 03:05",
+        title: "Stopping the Meter",
+        body: [
+            "You hunt the mining fleet across regions and tear it down. The cost graph flattens, and Finance will eventually be grateful, but the relief is narrow. You stopped the symptom that was easiest to see and most expensive to ignore, and touched none of the things that actually decide how bad this is.",
+            "The keys may still be live. The attacker may have made themselves new ones. And nobody has yet asked the logs what, besides compute, those keys reached.",
+        ],
+        intelReveal: ["Mining fleet terminated; cost bleed stopped. Access path and data exposure not yet addressed."],
+        choices: [
+            {
+                label: "Now deactivate the leaked keys",
+                detail: "Stop the obvious access path.",
+                effect: { clock: 10, dataExposure: -4, set: ["keysRevoked", "contained"] },
+                next: "cl_revoke",
+                show: (s) => !s.flags.keysRevoked,
+            },
+            {
+                label: "Scope CloudTrail for what the keys actually touched",
+                detail: "Find the persistence and the data access.",
+                effect: { clock: 30, caseStrength: 12, set: ["scoped"] },
+                next: "cl_scope",
+                show: (s) => !s.flags.scoped,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Hand it up and organize the response.",
+                effect: { clock: 8 },
+                next: "cl_warroom",
+            },
+        ],
+    },
+    cl_defer: {
+        id: "cl_defer",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 05:10",
+        title: "On Hold",
+        body: [
+            "You wait for the platform to tell you what to do, and the platform is a support queue at three in the morning. The bill climbs into territory that will need a board conversation. The API calls keep coming. By the time a human responds with a link to a generic best-practices document, the attacker has had more than two uninterrupted hours of administrative access to do whatever they came to do.",
+            "Treating a live compromise as a support ticket was a decision dressed up as patience, and it charged you for every minute.",
+        ],
+        intelReveal: ["BAD: over two hours of unaddressed attacker access elapsed while waiting on support. The bill and the blast radius both grew."],
+        onEnter: () => ({ caseStrength: -8, dataExposure: 16, set: ["activeAbuse"], trust: { exec: -6 } }),
+        choices: [
+            {
+                label: "Stop waiting and escalate to the Incident Commander",
+                detail: "You have lost time you cannot recover. Get the response moving.",
+                effect: { clock: 10 },
+                next: "cl_warroom",
+            },
+        ],
+    },
+    // ─────────────────────────── ACT 2 - INCIDENT COMMANDER ─────────────────────
+    cl_warroom: {
+        id: "cl_warroom",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Thu, early morning",
+        title: "Blast Radius",
+        body: [
+            "You are running it now, in the strange flat light of an incident that started while everyone was asleep. Sofia, the engineering lead, is mortified, the keys belonged to a pipeline her team owns and the engineer who leaked them is already apologizing in a thread. Finance has seen the bill and wants to know if it stops. Priya from Legal has exactly one question and keeps asking it in different ways: did they get to customer data?",
+            "The keys were administrative, which means the worst case is not the bill. The worst case is everything those keys could reach, and whether you can prove what they did or did not touch.",
+        ],
+        onEnter: (s) => {
+            const reveal = [];
+            if (!s.flags.scoped && !s.flags.contained && !s.flags.killedCompute) {
+                reveal.push("BAD: nothing has actually been contained yet. The keys are live, the fleet is mining, and the access is still open as this meeting starts.");
+                return { dataExposure: 10, set: ["activeAbuse"], intel: reveal };
+            }
+            if (!s.flags.scoped) reveal.push("(unconfirmed) Without scoping CloudTrail, you cannot yet say whether customer data was accessed or what persistence exists.");
+            else reveal.push("CloudTrail scoping is in hand; the actions taken with the keys are a known quantity.");
+            return { intel: reveal };
+        },
+        choices: [
+            {
+                label: "Assume full account compromise: rotate everything, audit every IAM principal across all regions, engage cloud IR",
+                detail: "Treat administrative keys as total compromise. Thorough, slow, expensive.",
+                effect: { clock: 90, caseStrength: 14, dataExposure: -8, set: ["assumedBreach"], trust: { legal: 10, exec: -4 }, intel: ["You bring in a cloud incident-response firm and begin a full sweep: every IAM user, role, and key in every region, rotation of all credentials, and a complete reconstruction of what the keys touched."] },
+                next: "cl_assumebreach",
+            },
+            {
+                label: "Targeted cleanup: kill the keys, delete the obvious backdoor user, lock the bucket, terminate compute",
+                detail: "Handle what you can see. Adequate only if you actually scoped it.",
+                effect: { clock: 30, trust: { eng: 8 } },
+                next: "cl_targeted",
+            },
+            {
+                label: "Quiet cleanup: eat the bill, fix it internally, keep it off the incident log",
+                detail: "Make it small. Engineering would prefer this. Legal would not.",
+                effect: { clock: 25, caseStrength: -6, set: ["quietHandling"], trust: { eng: 6, legal: -12 }, intel: ["The decision is to absorb the cost quietly and handle the rest in-house, on the theory that what nobody logs never happened."] },
+                next: "cl_quiet",
+            },
+        ],
+    },
+    cl_assumebreach: {
+        id: "cl_assumebreach",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Thu, morning",
+        title: "Assume the Worst",
+        body: [
+            "Assuming an administrative key meant total compromise is the only safe posture, and it is a great deal of work. The IR firm walks every region for IAM principals the attacker created, and finds the backdoor user, its access keys, and a second role tucked into a region your team never deploys to and would never have thought to check. All of it is removed. Every credential the keys could have exposed is rotated.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.dataAccessed || s.flags.activeAbuse) {
+                return { caseStrength: 12, dataExposure: -14, set: ["eradicated", "secretsRotated", "fullAudit", "foundExfil"], clear: ["persistenceRemained"], intel: ["The audit confirms the worst and contains it: the customer-exports bucket was read, the attacker's persistence is fully mapped and deleted, and the account is yours again. You know exactly what left."] };
+            }
+            return { caseStrength: 12, dataExposure: -12, set: ["eradicated", "secretsRotated", "fullAudit"], clear: ["persistenceRemained"], intel: ["The audit finds and removes all attacker-created principals and confirms the data exports were not successfully read. You rotate everything anyway, because an administrative key is not a thing you take on faith."] };
+        },
+        choices: [
+            {
+                label: "Move to the resolution: the bill, the blame, and the disclosure",
+                detail: "The account is secured. The accounting begins.",
+                effect: { clock: 15 },
+                next: "cl_aftermath",
+            },
+        ],
+    },
+    cl_targeted: {
+        id: "cl_targeted",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Thu, morning",
+        title: "Only What You Can See",
+        body: [
+            "Targeted cleanup is exactly as good as your visibility, and no better. You delete the backdoor user, lock the bucket, terminate the fleet, and rotate the leaked keys. If you mapped the account first, that list is complete and you are genuinely clean. If you did not, you are deleting the principals you happened to notice and trusting that the attacker was not more thorough than your search.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.scoped) {
+                return { caseStrength: 8, dataExposure: -10, set: ["eradicated", "secretsRotated", "contained"], clear: ["persistenceRemained"], intel: ["Because you scoped it first, the cleanup is complete: every principal the attacker created is accounted for and removed."] };
+            }
+            return { dataExposure: 4, set: ["persistenceRemained"], intel: ["(unconfirmed) You removed the backdoor user you could see. A second role in a region you never enumerated may still be holding the door open, and you would not know."] };
+        },
+        choices: [
+            {
+                label: "Now run a full cross-region IAM audit to be sure",
+                detail: "Confirm nothing was missed before you call it done.",
+                effect: { clock: 50, caseStrength: 10, set: ["fullAudit"] },
+                next: "cl_assumebreach",
+                show: (s) => !s.flags.eradicated,
+            },
+            {
+                label: "Declare it cleaned and move to the resolution",
+                detail: "You have handled what you found. Probably enough.",
+                effect: { clock: 12 },
+                next: (s) => (s.flags.persistenceRemained ? "cl_resurface" : "cl_aftermath"),
+            },
+        ],
+    },
+    cl_quiet: {
+        id: "cl_quiet",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Thu, midday",
+        title: "Keeping It Small",
+        body: [
+            "Quiet has a short half-life when there is a bill attached. Finance can see the spend whether or not you log an incident. The engineer who leaked the keys has already told three people. And if the attacker read the customer-exports bucket, then there are notification obligations that do not pause politely while you decide whether this counts as a Thing.",
+            "Discretion felt like control. With administrative keys in play, it is starting to feel like a gap in the record you will have to explain.",
+        ],
+        intelReveal: ["Notification and audit obligations attach to the access itself if customer data was reached, regardless of how quietly you handle the cost."],
+        onEnter: () => ({ set: ["lateNotice"] }),
+        choices: [
+            {
+                label: "Reverse course: full cross-region audit and cloud IR",
+                detail: "Do it properly. Late is better than never.",
+                effect: { clock: 50, caseStrength: 8, intel: ["You stop trying to keep it small and stand up a real response."] },
+                next: "cl_assumebreach",
+            },
+            {
+                label: "Just delete the leaked keys, eat the bill, and tell no one",
+                detail: "The minimum that feels like action. Leaves any backdoor in place.",
+                effect: { clock: 15, dataExposure: 4, set: ["persistenceRemained"], trust: { legal: -6 }, intel: ["You revoke the original keys and absorb the cost. Nobody audits the account, and any principal the attacker created stays exactly where it is."] },
+                next: "cl_resurface",
+            },
+            {
+                label: "Rotate the one key and quietly close it out",
+                detail: "Handle the obvious, move on, change nothing systemic.",
+                effect: { clock: 12, set: ["superficialFix"], trust: { legal: -4 }, intel: ["A single key rotation goes in and the ticket is closed. Whether data left, and whether a backdoor remains, are questions nobody chooses to ask."] },
+                next: "cl_aftermath",
+            },
+        ],
+    },
+    cl_resurface: {
+        id: "cl_resurface",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Fri",
+        title: "Back In Through the Side Door",
+        body: [
+            "You revoked the keys you knew about and moved on. The attacker did not, because they had stopped relying on those keys hours ago. The backdoor role in the region nobody checked was still valid, and a day later it wakes up: a fresh mining fleet in a new region, more enumeration, and another pass over the data stores, this time including a database snapshot copied out to an account you do not own.",
+            "Revoking the leaked credential was never the eviction. It was the part of the eviction that is easy to see. The attacker's own principals were the part that mattered, and you left them in place.",
+        ],
+        intelReveal: ["SECOND INCIDENT: an un-removed backdoor IAM role was used to relaunch mining and exfiltrate a database snapshot. The blast radius widened."],
+        onEnter: () => ({ caseStrength: -14, dataExposure: 26, set: ["secondIncident", "dataAccessed"], trust: { eng: -10, exec: -14 } }),
+        choices: [
+            {
+                label: "Take the compounded mess to the executive table",
+                detail: "There is no clean version of this now. Move to the fallout.",
+                effect: { clock: 30 },
+                next: "cl_aftermath",
+            },
+        ],
+    },
+    // ──────────────────────────────── ACT 3 - CISO ──────────────────────────────
+    cl_aftermath: {
+        id: "cl_aftermath",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "The Bill and the Blame",
+        body: [
+            "The technical incident is settling and two questions land on your desk. The first is what to do about how this happened: an over-privileged, long-lived key that a tired engineer pasted into a public repo at two in the morning. The second is what to do about the engineer. How you answer the first decides whether this recurs; how you answer the second decides whether anyone ever reports the next mistake instead of hiding it.",
+        ],
+        onEnter: (s) => {
+            const reveal = [];
+            if (s.flags.dataAccessed || s.flags.foundExfil) reveal.push("FINAL: customer data in the exports bucket was accessed. This carries notification obligations regardless of the cost recovered.");
+            else if (!s.flags.scoped && !s.flags.fullAudit) reveal.push("(unconfirmed) You never fully reconstructed what the keys touched, so you cannot rule out that customer data was read.");
+            else reveal.push("FINAL: the audit found no successful access to customer data. This was an expensive near-miss rather than a confirmed breach.");
+            return { intel: reveal };
+        },
+        choices: [
+            {
+                label: "Blameless postmortem and fix the root cause: secret scanning, short-lived credentials, IAM guardrails, mandatory rotation",
+                detail: "Make the class of mistake impossible. Keep people reporting.",
+                effect: { clock: 30, caseStrength: 6, set: ["rootCauseFixed"], trust: { eng: 8, legal: 6 }, intel: ["You run a blameless review and fund the fixes: secret scanning in CI, short-lived credentials replacing the long-lived keys, service-control-policy guardrails, and automatic key rotation."] },
+                next: "cl_disclosure",
+            },
+            {
+                label: "Discipline the engineer and move on without systemic changes",
+                detail: "Make an example. Change nothing about the system that allowed it.",
+                effect: { clock: 15, caseStrength: -4, set: ["blamedEngineer"], trust: { eng: -12 }, intel: ["The engineer is formally disciplined. The over-privileged long-lived keys and the missing secret scanning remain exactly as they were."] },
+                next: "cl_disclosure",
+            },
+            {
+                label: "Absorb the bill quietly and change nothing",
+                detail: "Pay it, close it, hope it does not happen again.",
+                effect: { clock: 10, set: ["noFix"], trust: { legal: -4 }, intel: ["The cost is written off and the incident is closed with no systemic change. The next leaked key will find the same open door."] },
+                next: "cl_disclosure",
+            },
+        ],
+    },
+    cl_disclosure: {
+        id: "cl_disclosure",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "What the Keys Could Reach",
+        body: [
+            "Under the cost story is a quieter and more serious one. Those keys could reach a bucket of customer data exports, and the logs either show that the attacker read it or, worse, are too incomplete to say. Either way, the access is a data question, and data questions come with notification clocks and a way of becoming public on someone else's schedule.",
+            "You were on the receiving end of a developer's two-in-the-morning shortcut. Now you decide what to tell the people whose data was sitting behind it.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.dataAccessed || s.flags.foundExfil) return { intel: ["The customer-exports bucket was accessed by the attacker. Notification obligations attach to that access."] };
+            return { intel: ["No confirmed read of customer data, though the leaked keys could have reached it. Disclosure here is a judgment call about a near-miss."] };
+        },
+        choices: [
+            {
+                label: "Notify affected customers and regulators about the access",
+                detail: "Treat the reachable data as exposed. Transparent and defensible.",
+                effect: { clock: 30, set: ["disclosedProperly"], trust: { legal: 10, exec: -6 } },
+                next: (s) => resolveCloudEnding(s, "proactive"),
+            },
+            {
+                label: "Disclose the minimum the lawyers say is strictly required",
+                detail: "Narrow and quiet. Legal's cautious compromise.",
+                effect: { clock: 20, trust: { exec: 6, legal: -2 } },
+                next: (s) => resolveCloudEnding(s, "minimal"),
+            },
+            {
+                label: "Call it a billing incident only; say nothing about the data",
+                detail: "Treat it as a cost event, not a breach. Bet the access stays quiet.",
+                effect: { clock: 10, trust: { exec: 8, legal: -12 } },
+                next: (s) => resolveCloudEnding(s, "none"),
+            },
+        ],
+    },
+    // ──────────────────────────────── ENDINGS ───────────────────────────────────
+    ending_cl_textbook: {
+        id: "ending_cl_textbook",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Locked Down by Dawn",
+        isEnding: true,
+        endingTitle: "Outcome: Contained Before the Coffee",
+        endingTone: "win",
+        body: [
+            "You treated an administrative key in a public repo as exactly what it was, a full compromise, and you moved accordingly. You scoped the trail instead of guessing, you hunted every region for the principals the attacker created rather than just revoking the key they came in on, and you rotated everything the keys could have touched. Then you fixed the thing that actually caused it: short-lived credentials, secret scanning, guardrails, so the next two-in-the-morning shortcut hits a wall instead of the internet.",
+            "The bill was eye-watering for a day and the data access was real, but you bounded it, closed it, and told the people who needed telling. You also kept the blameless culture that means the next engineer reports their mistake in minutes instead of hiding it for hours.",
+            "Leaked keys are won by speed and thoroughness, not luck. You had both before sunrise.",
+        ],
+    },
+    ending_cl_recovered: {
+        id: "ending_cl_recovered",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Contained, and Expensive",
+        isEnding: true,
+        endingTitle: "Outcome: Cleaned Up, at a Cost",
+        endingTone: "mixed",
+        body: [
+            "You got the attacker out and the account back, which is the core of the job. But the edges are rough: a bill nobody enjoyed explaining, a root cause left half-addressed, or an engineer made an example of in a way that will make the next person think twice about raising their hand. The incident is closed and the honest summary holds, threat evicted, lessons partially logged.",
+            "The cleanup was real and so were the corners. A few of the guardrails that would have prevented this still are not funded, which means the door this came through is narrower now but not closed.",
+            "A win, of the kind that comes with a to-do list and an invoice.",
+        ],
+    },
+    ending_cl_messy: {
+        id: "ending_cl_messy",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Survived the Night",
+        isEnding: true,
+        endingTitle: "Outcome: Through It, with Loose Ends",
+        endingTone: "mixed",
+        body: [
+            "Dawn comes and the company is still standing. The runaway compute is off, the obvious access is closed, and the worst-case headlines did not arrive, or at least have not yet. Somewhere in the rush there are loose ends: a region never fully audited, a data question answered with a shrug, a fix discussed but not funded.",
+            "None of it sank you. The after-action will be a long one, heavy on the IAM hygiene that everyone agreed was important and nobody had prioritized until the bill arrived.",
+            "You did not lose. You paid tuition, with interest, at cloud-compute rates.",
+        ],
+    },
+    ending_cl_resurface: {
+        id: "ending_cl_resurface",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "The Door You Left Open",
+        isEnding: true,
+        endingTitle: "Outcome: You Revoked the Key, Not the Access",
+        endingTone: "loss",
+        body: [
+            "You deactivated the leaked keys and treated that as the end of it. The attacker had moved on from those keys within minutes of arriving, into their own backdoor user and a role parked in a region nobody on your team ever touches. Your revocation inconvenienced no one but yourself. A day later they came back through the door you never found and took a database snapshot on the way out.",
+            "Eviction from a cloud compromise is not the leaked credential. It is the enumeration of every principal the attacker could have created with administrative access, the boring cross-region audit that finds the role you would never have looked for. You did the visible half and called it done.",
+            "One leaked key is a bad night. A second incident from the same intrusion is a finding with your name on it.",
+        ],
+    },
+    ending_cl_undisclosed: {
+        id: "ending_cl_undisclosed",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "What the Bucket Held",
+        isEnding: true,
+        endingTitle: "Outcome: You Called a Breach a Bill",
+        endingTone: "loss",
+        body: [
+            "You confirmed the attacker read the customer-exports bucket, and then you decided to frame the whole thing as a cost event and say nothing about the data. The bill, at least, you could expense. The decision to stay silent about the access is the one that does not stay expensed.",
+            "It surfaces the way these do, through a customer whose data is misused and traced back, or a regulator who asks why a known unauthorized read of a customer bucket never produced a notification. The disclosure you skipped becomes the omission you have to defend, and a deliberate silence about customer data is the hardest thing in this business to explain after the fact.",
+            "The leak was an accident. Calling the breach a billing line was a choice.",
+        ],
+    },
+    ending_cl_breach: {
+        id: "ending_cl_breach",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Read, and Gone",
+        isEnding: true,
+        endingTitle: "Outcome: The Data Left and You Were Slow",
+        endingTone: "loss",
+        body: [
+            "The keys could reach customer data, and while you were busy with the parts of the incident that were easier to see, the attacker reached it. The access was real, the response never quite bounded it, and the exposure outran your ability to contain or even fully describe it.",
+            "Regulators take an interest in the timeline. The customers in that bucket take an interest in why their data was sitting behind an administrative key with no expiry and no scanning. The mining bill, which felt like the crisis at 03:00, turns out to have been the cheap part of the evening.",
+            "The shortcut was a mistake. The slow, partial response is what turns a mistake into a breach.",
+        ],
+    },
+    ending_cl_deferred: {
+        id: "ending_cl_deferred",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Waiting on a Ticket",
+        isEnding: true,
+        endingTitle: "Outcome: You Filed a Ticket While They Worked",
+        endingTone: "loss",
+        body: [
+            "A live compromise is not a support case, and treating it like one cost you the only thing that mattered at 02:40: time. While you waited for a queue to surface a templated reply, the attacker had administrative access and used every minute of it, mining at scale, entrenching, and reaching the data, all of it unopposed because the response was a polite request for guidance.",
+            "By the time you started actually responding, the bill was a board item and the blast radius was a forensic project. The platform was never going to run your incident for you; severity-one is a label on your urgency, not a transfer of the problem.",
+            "The keys leaked in a minute. You gave the attacker two hours on top, for free, while on hold.",
+        ],
+    },
+};
+function resolveCloudEnding(s, disclosure) {
+    var dataOut = s.flags.dataAccessed || s.flags.foundExfil || s.dataExposure >= 55 || s.flags.secondIncident;
+    var breachKnownOrUnruled = s.flags.dataAccessed || s.flags.foundExfil || (!s.flags.scoped && !s.flags.fullAudit);
+    if (s.flags.secondIncident) return "ending_cl_resurface";
+    if (disclosure === "none" && breachKnownOrUnruled) { s.flags.concealed = true; return "ending_cl_undisclosed"; }
+    if (s.flags.deferred && s.flags.activeAbuse && !s.flags.eradicated) return "ending_cl_deferred";
+    if (dataOut && !s.flags.eradicated) { if (disclosure === "none") s.flags.recklessNoDisclosure = true; return "ending_cl_breach"; }
+    if (s.flags.eradicated && s.flags.secretsRotated && s.flags.rootCauseFixed && disclosure !== "none" && s.dataExposure < 35 && avgOk(s)) { s.flags.recovered = true; return "ending_cl_textbook"; }
+    if (s.flags.eradicated && disclosure !== "none") { s.flags.recovered = true; return "ending_cl_recovered"; }
+    return "ending_cl_messy";
+}
+function scoreAdjust(s) {
+    let delta = 0;
+    const wins = [];
+    const losses = [];
+    const avg = (s.trust.legal + s.trust.eng + s.trust.exec) / 3;
+    if (s.flags.eradicated) delta += 8;
+    if (s.flags.secretsRotated) delta += 6;
+    if (s.flags.rootCauseFixed) delta += 8;
+    if (s.flags.scoped) delta += 4;
+    if (s.flags.fullAudit) delta += 4;
+    if (s.flags.disclosedProperly) delta += 5;
+    if (s.flags.secondIncident) delta -= 14;
+    if (s.flags.concealed) delta -= 12;
+    if (s.flags.recklessNoDisclosure) delta -= 12;
+    if (s.flags.persistenceRemained && !s.flags.eradicated) delta -= 8;
+    if (s.flags.deferred) delta -= 6;
+    if (s.flags.blamedEngineer) delta -= 6;
+    if (s.flags.lateNotice) delta -= 4;
+    if (s.flags.eradicated && s.flags.secretsRotated) wins.push("You treated administrative keys as total compromise and rotated everything they could reach.");
+    if (s.flags.fullAudit) wins.push("You audited every IAM principal across all regions, finding persistence a quick cleanup would have missed.");
+    if (s.flags.rootCauseFixed) wins.push("You fixed the root cause: short-lived credentials, secret scanning, and IAM guardrails.");
+    if (s.flags.scoped) wins.push("You scoped CloudTrail before swinging, so you acted on what the attacker actually did.");
+    if (s.flags.disclosedProperly) wins.push("You treated the data access as the breach it was and disclosed it properly.");
+    if (s.flags.rootCauseFixed && !s.flags.blamedEngineer) wins.push("You ran a blameless postmortem, keeping the culture that makes people report the next mistake fast.");
+    if (s.flags.secondIncident) losses.push("You revoked the leaked key but left a backdoor principal, and the attacker returned through it.");
+    if (s.flags.concealed) losses.push("You concealed a confirmed access to customer data, framing a breach as a billing event.");
+    if (s.flags.persistenceRemained && !s.flags.eradicated) losses.push("You cleaned up only what you could see, leaving attacker-created persistence in place.");
+    if (s.flags.deferred) losses.push("You treated a live compromise as a support ticket and handed the attacker hours of free access.");
+    if (s.flags.blamedEngineer) losses.push("You disciplined the engineer instead of fixing the system, teaching everyone to hide the next mistake.");
+    if (s.dataExposure >= 55) losses.push("A significant volume of customer data was exposed and could not be recovered.");
+    if (avg < 45) losses.push("Stakeholder trust eroded. Engineering and Legal will both remember how this was run.");
+    return { delta, wins, losses };
+}
+exports.cloudKeyScenario = {
+    meta: {
+        id: "cloudkey",
+        title: "Key to the Kingdom",
+        codename: "Cloud Credential Leak",
+        blurb: "An engineer pushed admin AWS keys to public GitHub at 2am. Bots found them in minutes. Now something is mining crypto on your dime and reaching for your customer data.",
+        premise: "A cost alarm and a GuardDuty alert wake you at 02:40: long-lived administrative keys for a CI pipeline were committed to a public repository, and an attacker is already in your cloud account spending your money. The bill is the loud problem; the keys could reach everything is the real one. You will work it from three seats: scope the blast radius before you swing, decide whether revoking a key is the same as evicting an attacker, and answer for a runaway bill, a tired engineer, and a bucket of customer data that an administrative key could touch.",
+        difficulty: "Hard",
+        accent: "orange",
+        tags: ["Cloud", "IAM", "Credential Leak", "Disclosure"],
+        acts: 3,
+    },
+    firstScene: "cl_start",
+    initialState: () => ({
+        scene: "cl_start",
+        clock: 0,
+        caseStrength: 16,
+        dataExposure: 38,
+        trust: { legal: 55, eng: 55, exec: 55 },
+        flags: {},
+        intel: [],
+        log: [],
+    }),
+    scenes: SCENES,
+    meterLabels: {
+        primary1: "Containment",
+        primary2: "Exposure",
+        s1: "Legal / Reg.",
+        s2: "Engineering",
+        s3: "Executive",
+    },
+    scoreAdjust,
+};
+
+  return exports.cloudKeyScenario;
+})();
+
+const vishingScenario = (function(){
+  const exports = {}; const module = { exports: exports };
+  const require = function(){ return {}; };
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.vishingScenario = void 0;
+/**
+ * Scenario: "The Voice on the Line"
+ * A deepfake / vishing executive-fraud attack. Three seats:
+ *   Act 1  - SOC Analyst         (the impossible request)
+ *   Act 2  - Incident Commander  (the recall and the access)
+ *   Act 3  - CISO                (the loss, the blame, the disclosure)
+ *
+ * Ground truth: an attacker who OSINT'd the company runs a real-time social
+ * engineering operation. Using an AI-cloned voice of the CFO, backed by a short
+ * deepfake video call, they pressure a Finance analyst into releasing an urgent
+ * "confidential acquisition" wire of $4M, and pressure the IT service desk into
+ * resetting the real CFO's MFA and enrolling an attacker-controlled device. There
+ * is no malware and no mailbox compromise. The whole attack is authority, urgency,
+ * and secrecy, and the only durable defense is out-of-band verification on a known
+ * channel. The fog is simply: is the voice real? It is not.
+ */
+function avgOk(s) { return (s.trust.legal + s.trust.eng + s.trust.exec) / 3 >= 48; }
+const SCENES = {
+    // ───────────────────────────── ACT 1 - SOC ANALYST ─────────────────────────
+    vp_start: {
+        id: "vp_start",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 15:20",
+        title: "The Impossible Request",
+        body: [
+            "Two things cross your desk inside a minute and they rhyme in a way you do not like. The IT service desk just reset multi-factor authentication on the CFO's account and enrolled a new device, on the strength of a phone call from someone who sounded exactly like her and knew her assistant's name, her travel, and the board offsite. And Finance has flagged an urgent wire, $4M, against a 'confidential acquisition' the CFO supposedly called in personally, stressing secrecy and speed.",
+            "The CFO is, according to her calendar, on a long-haul flight right now, unreachable, which is precisely the detail that makes both stories work.",
+            "It might be a real, badly-handled rush. It has the exact shape of something else.",
+        ],
+        intelReveal: [
+            "Service desk reset the CFO's MFA and enrolled a new device, authorized by a phone call.",
+            "Finance flagged an urgent $4M wire for a 'confidential acquisition' the CFO called in, stressing secrecy.",
+            "(unconfirmed) The CFO is shown as in-flight and unreachable, which conveniently blocks normal verification.",
+        ],
+        choices: [
+            {
+                label: "Call the CFO back on her known number before anything else",
+                detail: "Out-of-band verification on a trusted channel. The one move the attack is built to prevent.",
+                effect: { clock: 15, caseStrength: 12, set: ["oobVerify"], intel: ["You ignore the in-flight story and try the CFO on her known mobile and her chief of staff, refusing to verify identity through the same channel that made the request."] },
+                next: "vp_callback",
+            },
+            {
+                label: "Freeze the wire and lock the CFO's account immediately",
+                detail: "Contain first, verify after. Heavy-handed if it is somehow real.",
+                effect: { clock: 10, dataExposure: -12, set: ["frozenWire", "accountLocked", "contained"], trust: { eng: -6, exec: -6 }, intel: ["You put a hold on the wire with the bank and lock the CFO account pending verification. If it was legitimate, several senior people are about to be inconvenienced."] },
+                next: "vp_freeze",
+            },
+            {
+                label: "Investigate quietly: pull the call logs, the reset ticket, the wire trail",
+                detail: "Build the picture before you act. The wire keeps moving meanwhile.",
+                effect: { clock: 30, caseStrength: 8, set: ["scoped"], intel: ["You start quietly reconstructing the calls, the service-desk ticket, and the payment instruction."] },
+                next: "vp_investigate",
+            },
+            {
+                label: "It's the CFO and she's in a hurry; expedite and move on",
+                detail: "She's senior, it's confidential, the desk already verified the voice. Don't be the holdup.",
+                effect: { clock: 10, dataExposure: 18, caseStrength: -8, set: ["complacent", "wireSent", "deviceAdded", "dataExposed"], intel: ["You let it ride. The wire releases. The new device on the CFO's account starts reading her mailbox and approving things in her name."] },
+                next: "vp_complacent",
+            },
+        ],
+    },
+    vp_callback: {
+        id: "vp_callback",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 15:35",
+        title: "She Never Called",
+        body: [
+            "You reach the CFO's chief of staff, who reaches the CFO between flights. She is bewildered. She made no call, requested no wire, knows of no acquisition, and certainly did not ask anyone to reset her MFA. The voice that did all of that was not hers, however much it sounded like it.",
+            "That is the whole game exposed in one callback. The attacker built an entire reality designed to keep anyone from doing exactly what you just did.",
+        ],
+        intelReveal: [
+            "CONFIRMED fraud: the CFO made no call, no wire request, and no MFA reset. The voice was synthetic.",
+            "The attack relied on authority, urgency, and secrecy to suppress out-of-band verification.",
+        ],
+        onEnter: () => ({ caseStrength: 10, set: ["confirmedFraud"], intel: ["You now know it is an impostor. Everything from here is response, not diagnosis."] }),
+        choices: [
+            {
+                label: "Freeze the wire and lock down the CFO's account now",
+                detail: "You have confirmation. Contain both prongs.",
+                effect: { clock: 10, dataExposure: -12, set: ["frozenWire", "accountLocked", "contained"], intel: ["Hold placed on the wire, the enrolled device killed, the account locked. Both prongs contained on confirmed fraud."] },
+                next: "vp_freeze",
+                show: (s) => !s.flags.contained,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "It is confirmed fraud in progress. Get the room.",
+                effect: { clock: 8 },
+                next: "vp_warroom",
+            },
+        ],
+    },
+    vp_freeze: {
+        id: "vp_freeze",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 15:40",
+        title: "Holds and Locks",
+        body: [
+            "The bank places a hold on the wire and the CFO's account goes into lockdown, the attacker's enrolled device cut off mid-session. It is decisive, and if you moved before verifying, you have also just locked out a senior executive and frozen a payment on suspicion, which is a conversation you will have to have.",
+            "Decisive is good in fraud. Decisive plus verified is better.",
+        ],
+        choices: [
+            {
+                label: "Verify out-of-band and scope what happened",
+                detail: "Confirm it was an impostor and map the access the reset gave them.",
+                effect: { clock: 18, caseStrength: 10, set: ["scoped"], intel: ["You confirm the impostor out-of-band and reconstruct what the enrolled device touched before you killed it."] },
+                next: "vp_callback",
+                show: (s) => !s.flags.oobVerify,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Hand it up with both prongs contained.",
+                effect: { clock: 8 },
+                next: "vp_warroom",
+            },
+        ],
+    },
+    vp_investigate: {
+        id: "vp_investigate",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 15:55",
+        title: "The Seams Show",
+        body: [
+            "The evidence assembles into a forgery. The inbound calls came through a spoofed caller ID; a recording from the service-desk line has the CFO's cadence but a faint, wrong smoothness, the tell of a voice model. The 'acquisition' matches nothing in the deal pipeline. The urgency and the secrecy were not incidental; they were the mechanism.",
+            "You did not freeze anything while you looked, though, and the wire has had time to move.",
+        ],
+        intelReveal: [
+            "CONFIRMED: spoofed caller ID and a synthetic voice. The 'acquisition' does not exist.",
+            "Deepfake executive fraud confirmed; the attack is social engineering, not a system compromise.",
+            "(unconfirmed) While you investigated rather than froze, the wire was released downstream.",
+        ],
+        onEnter: (s) => {
+            const e = { caseStrength: 8, set: ["confirmedFraud", "deepfakeConfirmed"], intel: ["The attack has no malware and no breach of your systems. It is pure manipulation, which is its own kind of hard to fight."] };
+            if (!s.flags.frozenWire && !s.flags.wireSent) { e.set.push("wireSent"); e.dataExposure = 14; e.intel.push("BAD: the wire released while you were building the picture. The money is now in motion."); }
+            return e;
+        },
+        choices: [
+            {
+                label: "Freeze and lock down now, before more moves",
+                detail: "Stop the access and chase the money.",
+                effect: { clock: 10, dataExposure: -6, set: ["accountLocked", "contained"], intel: ["You lock the account and kill the enrolled device, and get the bank moving on the wire."] },
+                next: "vp_freeze",
+                show: (s) => !s.flags.contained,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "You know exactly what this is. Get the response organized.",
+                effect: { clock: 8 },
+                next: "vp_warroom",
+            },
+        ],
+    },
+    vp_complacent: {
+        id: "vp_complacent",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Thu 17:30",
+        title: "By the Time She Lands",
+        body: [
+            "It unravels when the real CFO lands and turns her phone on to a wall of confused messages. She made no call. There was no acquisition. And while everyone deferred to a voice, $4M left on a forged instruction and a device that is not hers has spent two hours inside her mailbox, reading the deal folder and approving a second request in her name.",
+            "The voice was good enough. It did not need to be perfect. It only needed you not to check.",
+        ],
+        intelReveal: [
+            "CONFIRMED fraud, discovered late: no call, no acquisition, $4M released, attacker device active in the CFO mailbox.",
+            "The enrolled device read confidential deal material and approved a follow-on request.",
+        ],
+        onEnter: () => ({ caseStrength: -6, dataExposure: 8, trust: { exec: -8 } }),
+        choices: [
+            {
+                label: "Escalate hard to the Incident Commander; you are already behind",
+                detail: "No more deference to a phone call. Get the room.",
+                effect: { clock: 10 },
+                next: "vp_warroom",
+            },
+        ],
+    },
+    // ─────────────────────────── ACT 2 - INCIDENT COMMANDER ─────────────────────
+    vp_warroom: {
+        id: "vp_warroom",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Thu, evening",
+        title: "It Sounded Like Her",
+        body: [
+            "The room is tense and a little embarrassed, which is the natural climate of a social-engineering incident. The Finance director wants the money back and the quarter intact. The service-desk lead is shaken, the caller knew everything and sounded exactly right. Priya from Legal is thinking about the loss, the cyber policy, and the access the reset handed over. The CEO wants to understand how a phone call moved four million dollars and reset an executive's security.",
+            "Nobody attacked your firewalls. They attacked your trust, and your process let them.",
+        ],
+        onEnter: (s) => {
+            const reveal = [];
+            if (s.flags.wireSent && !s.flags.frozenWire) reveal.push("Recall status: the wire is in motion and unfrozen. Every minute is money walking toward a mule account.");
+            else if (s.flags.frozenWire) reveal.push("Recall status: the wire is held. The money is safe if you keep the pressure on.");
+            if (s.flags.deviceAdded && !s.flags.contained) reveal.push("(unconfirmed) The attacker's enrolled device may still be active in the CFO's account.");
+            if (!s.flags.confirmedFraud) reveal.push("(unconfirmed) The fraud has not been positively confirmed out-of-band; you are acting on strong suspicion.");
+            return { intel: reveal };
+        },
+        choices: [
+            {
+                label: "Run it by the book: bank recall and IC3, lock every executive account, mandate callback verification",
+                detail: "Formal recovery and a hard process fix. Slower, far stronger footing.",
+                effect: { clock: 40, caseStrength: 10, set: ["bankRecall", "lawEnforcement", "ic3"], trust: { legal: 12, exec: -4 }, intel: ["You file with the bank's fraud team and the FBI IC3, lock and re-verify every executive account, and stand up a mandatory call-back policy on a known number for wires and privileged resets."] },
+                next: "vp_formal",
+            },
+            {
+                label: "Assume the attacker is in: hunt what the enrolled device did and revoke everything",
+                detail: "Treat the MFA reset as a real intrusion into the mailbox and approvals.",
+                effect: { clock: 35, caseStrength: 6, set: ["hunting"], intel: ["You prioritize the access prong: what did the device read, what did it approve, what else did it touch."] },
+                next: "vp_eradicate",
+            },
+            {
+                label: "Keep it quiet; claw the money back discreetly and don't alarm the board or market",
+                detail: "Handle it internally. Finance would prefer this. Legal would not.",
+                effect: { clock: 25, caseStrength: -6, set: ["quietHandling"], trust: { eng: 4, legal: -12 }, intel: ["The instinct is to keep it small. The insurer's notification window and the IC3 filing clock keep running, unattended."] },
+                next: "vp_quiet",
+            },
+        ],
+    },
+    vp_formal: {
+        id: "vp_formal",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Thu, late",
+        title: "Paper and Process",
+        body: [
+            "The recovery machine engages. The bank works the receiving institution, the IC3 complaint creates the record law enforcement and the insurer need, and Legal documents that the company behaved like a diligent victim the moment it knew. If the wire was frozen in time, this is mostly cleanup. If it already moved, this is the only road to getting it back.",
+            "Process is unglamorous and, in fraud, it is most of the win.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.frozenWire) return { dataExposure: -10, set: ["recoveredFunds"], intel: ["Because the wire was held before it moved, the funds are released back to the company. The direct loss is contained."] };
+            return { intel: ["The wire had already moved; the recall and the claim are now the path back, and recovery on a released wire is partial at best."] };
+        },
+        choices: [
+            {
+                label: "Now hunt the access the reset handed over and evict it",
+                detail: "The money track is running. Close the door the impostor opened.",
+                effect: { clock: 30 },
+                next: "vp_eradicate",
+                show: (s) => !s.flags.eradicated,
+            },
+            {
+                label: "Move to the loss and disclosure decisions",
+                detail: "The recovery track is in motion. Time to decide the rest.",
+                effect: { clock: 15 },
+                next: "vp_recovery",
+            },
+        ],
+    },
+    vp_eradicate: {
+        id: "vp_eradicate",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Thu, late",
+        title: "What the Reset Opened",
+        body: [
+            "A reset MFA on an executive account is not a small thing. The enrolled device could read everything she could read and approve things in her name. The question that decides whether this is one incident or two is whether you actually map and revoke that access or just assume a password change covered it.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.scoped || s.flags.oobVerify || s.flags.confirmedFraud) {
+                return { caseStrength: 10, set: ["eradicated"], clear: ["persistenceRemained"], intel: ["You map it properly: the enrolled device, its sessions, its tokens, and the approvals it touched. All revoked. The attacker is out of her account."] };
+            }
+            return { set: ["persistenceRemained"], intel: ["BAD: you reset the account but never mapped what the enrolled device did or whether its session tokens are still live. The door may still be open and you would not know."] };
+        },
+        choices: [
+            {
+                label: "Lock it down and mandate callback verification for wires and privileged MFA resets",
+                detail: "Fix the access and the process hole that let a voice do this.",
+                effect: { clock: 30, caseStrength: 8, set: ["rootCauseFixed"], trust: { legal: 6, eng: 4 }, intel: ["Out-of-band callback verification on a known number is made mandatory for payments and executive resets, and the service desk gets deepfake-aware training. This specific trick stops working."] },
+                next: (s) => (s.flags.persistenceRemained ? "vp_second" : "vp_recovery"),
+            },
+            {
+                label: "Declare it contained and move to resolution",
+                detail: "You have done enough. Probably.",
+                effect: { clock: 10 },
+                next: (s) => (s.flags.persistenceRemained ? "vp_second" : "vp_recovery"),
+            },
+        ],
+    },
+    vp_quiet: {
+        id: "vp_quiet",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Fri",
+        title: "Keeping It Small",
+        body: [
+            "Quiet has a half-life. The bank's recall leverage decays by the hour, the cyber policy has a prompt-notification clause that is expiring, and the access the impostor was handed does not care whether you have logged an incident. Discretion felt like protecting the company. It is starting to feel like running out the clock on your own options.",
+        ],
+        intelReveal: ["Insurer notification window is closing; recall leverage is decaying while the matter is kept internal."],
+        onEnter: () => ({ set: ["lateNotice"] }),
+        choices: [
+            {
+                label: "Reverse course: bank recall, IC3, and the formal track",
+                detail: "Better late than never, though late has a cost.",
+                effect: { clock: 25, caseStrength: 6, set: ["bankRecall", "ic3"], trust: { legal: 6 } },
+                next: "vp_formal",
+            },
+            {
+                label: "Quietly reverse what you can and reset the account; tell no one",
+                detail: "The minimum that feels like action. Never maps the access.",
+                effect: { clock: 20, dataExposure: 6, set: ["persistenceRemained"], trust: { legal: -8 }, intel: ["You reset the account and chase the wire informally, and never establish what the enrolled device did before the reset."] },
+                next: "vp_second",
+            },
+            {
+                label: "Close it out quietly and absorb whatever the loss is",
+                detail: "Make it disappear. No claim, no notice, no lessons.",
+                effect: { clock: 15, set: ["superficialFix"], trust: { legal: -4 }, intel: ["The matter is closed internally with no claim filed and no real fix. Whether the access was fully revoked is a question nobody presses."] },
+                next: "vp_recovery",
+            },
+        ],
+    },
+    vp_second: {
+        id: "vp_second",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Mon",
+        title: "They Called Back",
+        body: [
+            "You thought you were writing the after-action. Instead, Monday morning, the access nobody fully revoked is used again: the attacker, still riding a live session on the executive account, approves a second fraudulent payment and forwards the confidential deal folder out of the building. Because the session was legitimate in the system's eyes, nothing flagged it.",
+            "The first fraud was a phone call you could have caught. The second came from inside, through a door you were told about and left open.",
+        ],
+        intelReveal: ["SECOND FRAUD: the un-revoked executive session approved another payment and exfiltrated the deal folder. The loss and the exposure both multiplied."],
+        onEnter: () => ({ caseStrength: -14, dataExposure: 26, set: ["secondFraud", "dataExposed"], trust: { eng: -10, exec: -14 } }),
+        choices: [
+            {
+                label: "Take the compounded mess to the executive table",
+                detail: "There is no clean version of this now. Move to the fallout.",
+                effect: { clock: 30 },
+                next: "vp_recovery",
+            },
+        ],
+    },
+    // ──────────────────────────────── ACT 3 - CISO ──────────────────────────────
+    vp_recovery: {
+        id: "vp_recovery",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution week",
+        title: "Who Eats It",
+        body: [
+            "The technical incident, such as it was, is closing. The financial and human one lands on your desk. There is a number on a spreadsheet, an insurer waiting to see whether you behaved like a careful victim, a Finance analyst who released a wire on a voice and is now terrified, and a service-desk tech who reset an executive's MFA because the caller knew everything.",
+            "How you handle the loss and the people sets the tone for whether anyone ever raises their hand the next time a voice sounds wrong.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.recoveredFunds) return { intel: ["FINAL: the wire was held in time and the funds are back. The direct financial loss is small."] };
+            if (s.flags.bankRecall && s.flags.ic3) return { intel: ["FINAL: direct recovery on the moved wire is partial; the claim and the law-enforcement track are the path toward whole."] };
+            return { intel: ["FINAL: little to no recovery on the wire. The loss is largely on the company's books."] };
+        },
+        choices: [
+            {
+                label: "Full transparency: file the claim correctly, brief the board, fix the controls, support the staff",
+                detail: "The defensible path. Treat the people as victims of a sophisticated attack, not culprits.",
+                effect: { clock: 30, caseStrength: 8, set: ["transparent", "insuranceClaim", "rootCauseFixed"], trust: { legal: 10, exec: 2 }, intel: ["You file the claim cleanly, brief leadership honestly, harden the verification process, and make clear the staff followed a broken process rather than failed a good one."] },
+                next: "vp_disclosure",
+            },
+            {
+                label: "Discipline the analyst who sent the wire and move on",
+                detail: "Make an example of the human. Change nothing about the process that failed them.",
+                effect: { clock: 15, caseStrength: -4, set: ["blamedAnalyst"], trust: { eng: -12 }, intel: ["The Finance analyst is formally disciplined. The absence of any callback-verification requirement, which is what actually failed, remains exactly as it was."] },
+                next: "vp_disclosure",
+            },
+            {
+                label: "Dispute the loss; push liability onto the bank and the telco, lawyer up",
+                detail: "Fight it. Maybe spoofed caller ID makes it someone else's problem.",
+                effect: { clock: 30, set: ["fightLiability"], trust: { legal: -2, exec: 6 }, intel: ["Outside counsel sends letters arguing the bank and the carrier share the loss. The theory is arguable and the relationships get expensive."] },
+                next: "vp_disclosure",
+            },
+        ],
+    },
+    vp_disclosure: {
+        id: "vp_disclosure",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution week",
+        title: "What the Account Could See",
+        body: [
+            "Under the wire is a quieter exposure that is easy to ignore because no dollar figure is attached yet. If the attacker's device sat inside the CFO's account, it could read confidential deal material, board correspondence, and whatever regulated data passes through an executive's mailbox. That is a data question with its own obligations, separate from the money, and it surfaces on someone else's timeline if not yours.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.deviceAdded || s.flags.dataExposed) return { intel: ["The attacker's enrolled device had access to the executive mailbox and its contents. Disclosure obligations attach to that access."] };
+            return { intel: ["The account access was cut before the enrolled device could read anything of substance. The exposure here is minimal."] };
+        },
+        choices: [
+            {
+                label: "Notify the affected parties and regulators about the account access",
+                detail: "Treat the executive-account access as the breach it is. Transparent and defensible.",
+                effect: { clock: 30, set: ["disclosedProperly"], trust: { legal: 10, exec: -6 } },
+                next: (s) => resolveVpEnding(s, "proactive"),
+            },
+            {
+                label: "Disclose the minimum the lawyers say is strictly required",
+                detail: "Narrow and quiet. Legal's cautious compromise.",
+                effect: { clock: 20, trust: { exec: 6, legal: -2 } },
+                next: (s) => resolveVpEnding(s, "minimal"),
+            },
+            {
+                label: "Call it a financial matter only; say nothing about the account access",
+                detail: "Treat it as fraud, not a breach. Hope the access stays quiet.",
+                effect: { clock: 10, trust: { exec: 8, legal: -12 } },
+                next: (s) => resolveVpEnding(s, "none"),
+            },
+        ],
+    },
+    // ──────────────────────────────── ENDINGS ───────────────────────────────────
+    ending_vp_textbook: {
+        id: "ending_vp_textbook",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Verified, and It Folded",
+        isEnding: true,
+        endingTitle: "Outcome: One Callback Ended It",
+        endingTone: "win",
+        body: [
+            "You did the single thing the entire attack was engineered to prevent: you hung up and called back on a number you trusted. The synthetic voice was flawless and it did not matter, because you refused to verify a request through the same channel that made it. The wire never left, the enrolled device was evicted before it could read anything, and you turned a broken process into a mandatory callback rule.",
+            "You also treated the analyst and the service-desk tech as people a professional attack nearly fooled, not as failures, which is why the next person who hears a wrong-sounding voice will pick up the phone instead of hiding.",
+            "Deepfake fraud beats authority and urgency. It does not beat a callback to a known number. You made the callback.",
+        ],
+    },
+    ending_vp_recovered: {
+        id: "ending_vp_recovered",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Caught in Time",
+        isEnding: true,
+        endingTitle: "Outcome: Contained Through Process",
+        endingTone: "mixed",
+        body: [
+            "You got there. The money was held or clawed back, the executive account was secured, and the attacker walked away with less than they came for. The road was bumpier than a clean callback would have been, with a hold placed on suspicion or an access scare worked late, but the controls held where it counted.",
+            "The board conversation about how a voice got this far is uncomfortable, and the verification policy that goes in now makes this specific movie hard to remake.",
+            "Not the clean catch. The competent recovery, which in fraud is most of the win.",
+        ],
+    },
+    ending_vp_messy: {
+        id: "ending_vp_messy",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Rattled, Not Robbed",
+        isEnding: true,
+        endingTitle: "Outcome: Survived, with Loose Ends",
+        endingTone: "mixed",
+        body: [
+            "It is over, more or less. The attacker did not get the full prize, the company is intact, and the worst headlines did not land. Somewhere in the middle the response left threads dangling: an access question answered with a shrug, a disclosure thinner than ideal, a recovery that worked by effort more than design.",
+            "None of it was fatal. The after-action will be long and the verification runbook will change.",
+            "You did not lose. You paid tuition, and you will be teaching the lesson for a while.",
+        ],
+    },
+    ending_vp_second: {
+        id: "ending_vp_second",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "They Called Back",
+        isEnding: true,
+        endingTitle: "Outcome: You Reset the Password, Not the Access",
+        endingTone: "loss",
+        body: [
+            "You treated a reset as an eviction, and the two are not the same. The attacker's enrolled device kept a live session on the executive account, and while you wrote up the first fraud, it approved a second payment and forwarded the deal folder out of the building, all from inside, all looking legitimate.",
+            "Eviction after an MFA-reset attack is the sessions, the tokens, the enrolled devices, the approvals, not the password. A reset is the part that feels like action and accomplishes the least. You learned that from the second incident, which is always worse than the first.",
+            "One fraud is a bad Thursday. Two from the same access is a finding with your name on it.",
+        ],
+    },
+    ending_vp_undisclosed: {
+        id: "ending_vp_undisclosed",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "What the Reset Reached",
+        isEnding: true,
+        endingTitle: "Outcome: You Called a Breach a Fraud",
+        endingTone: "loss",
+        body: [
+            "You handled the money and stayed silent about the part where an attacker-controlled device sat inside an executive's mailbox reading confidential material. The wire got resolved one way or another. The decision to never acknowledge the access did not.",
+            "It surfaces the way these do, through a deal partner whose information was in that mailbox, or a regulator asking why an executive-account compromise produced no notification. The disclosure you skipped becomes the omission you defend, and explaining a deliberate silence is always worse than the notice would have been.",
+            "The fraud cost money. Pretending the breach was only a fraud cost the benefit of the doubt.",
+        ],
+    },
+    ending_vp_wired: {
+        id: "ending_vp_wired",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Four Million on a Phone Call",
+        isEnding: true,
+        endingTitle: "Outcome: The Money Left on a Voice",
+        endingTone: "loss",
+        body: [
+            "The wire went out and it did not come back. Maybe you investigated while you should have frozen, maybe the recall was a step behind the mule network, but the result is a seven-figure hole opened by a request that existed only as a voice on a line and a manufactured sense of hurry.",
+            "You evicted the access and tightened the process, which keeps it from happening twice, and none of that refills the account. A confident impersonation and a payment process with no out-of-band check is all it took, and it was enough.",
+            "The attacker never touched a system. They only had to sound right and rush you, and the money did the rest.",
+        ],
+    },
+    ending_vp_fooled: {
+        id: "ending_vp_fooled",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "It Sounded Just Like Her",
+        isEnding: true,
+        endingTitle: "Outcome: You Took a Voice at Its Word",
+        endingTone: "loss",
+        body: [
+            "You expedited because she was senior and in a hurry and the desk said the voice checked out. So $4M left on a synthetic instruction, an attacker spent hours inside the CFO's mailbox, and the first anyone verified anything was when the real CFO landed to a phone full of confusion.",
+            "Every control the attack defeated was a human one, and every one of them would have held against a single callback to a known number. Authority, urgency, and secrecy are not incidental features of these attacks; they are the entire toolkit, engineered specifically to make you skip the one step that works.",
+            "The voice only had to be good enough. You supplied the rest.",
+        ],
+    },
+};
+function resolveVpEnding(s, disclosure) {
+    if (s.flags.secondFraud) return "ending_vp_second";
+    if (disclosure === "none" && (s.flags.deviceAdded || s.flags.dataExposed)) { s.flags.concealed = true; return "ending_vp_undisclosed"; }
+    if (s.flags.complacent && !s.flags.eradicated) return "ending_vp_fooled";
+    if (s.flags.wireSent && !s.flags.recoveredFunds) return "ending_vp_wired";
+    if (s.flags.frozenWire && s.flags.eradicated && s.flags.rootCauseFixed && disclosure !== "none" && s.dataExposure < 42 && avgOk(s)) { s.flags.recovered = true; return "ending_vp_textbook"; }
+    if ((s.flags.frozenWire || s.flags.recoveredFunds || s.flags.eradicated) && disclosure !== "none") { s.flags.recovered = true; return "ending_vp_recovered"; }
+    return "ending_vp_messy";
+}
+function scoreAdjust(s) {
+    let delta = 0;
+    const wins = [];
+    const losses = [];
+    const avg = (s.trust.legal + s.trust.eng + s.trust.exec) / 3;
+    if (s.flags.oobVerify) delta += 6;
+    if (s.flags.frozenWire || s.flags.recoveredFunds) delta += 8;
+    if (s.flags.eradicated) delta += 6;
+    if (s.flags.rootCauseFixed) delta += 8;
+    if (s.flags.bankRecall) delta += 3;
+    if (s.flags.disclosedProperly) delta += 5;
+    if (s.flags.secondFraud) delta -= 14;
+    if (s.flags.concealed) delta -= 12;
+    if (s.flags.complacent) delta -= 10;
+    if (s.flags.blamedAnalyst) delta -= 8;
+    if (s.flags.persistenceRemained && !s.flags.eradicated) delta -= 8;
+    if (s.flags.lateNotice) delta -= 6;
+    if (s.flags.fightLiability) delta -= 4;
+    if (s.flags.oobVerify) wins.push("You verified out-of-band on a known channel, the one move the attack was built to prevent.");
+    if (s.flags.frozenWire || s.flags.recoveredFunds) wins.push("You stopped or recovered the wire before it dispersed.");
+    if (s.flags.eradicated) wins.push("You evicted the access the reset handed over: device, sessions, and tokens, not just a password.");
+    if (s.flags.rootCauseFixed) wins.push("You mandated out-of-band callback verification for payments and executive resets.");
+    if (s.flags.disclosedProperly) wins.push("You treated the executive-account access as the breach it was and disclosed it properly.");
+    if (s.flags.transparent && !s.flags.blamedAnalyst) wins.push("You treated the fooled staff as victims of a sophisticated attack, keeping people willing to report.");
+    if (s.flags.secondFraud) losses.push("You reset the account but never evicted the session, and the surviving access committed a second fraud.");
+    if (s.flags.complacent) losses.push("You expedited on a synthetic voice with no out-of-band check, and the money and the mailbox both left.");
+    if (s.flags.concealed) losses.push("You concealed an executive-account compromise, turning a fraud into an undisclosed breach.");
+    if (s.flags.blamedAnalyst) losses.push("You punished the human who was fooled instead of fixing the process, chilling the next person from reporting.");
+    if (s.flags.persistenceRemained && !s.flags.eradicated) losses.push("You never mapped the access the reset granted, leaving a live session in an executive account.");
+    if (s.flags.lateNotice) losses.push("You delayed the recall and the insurer notice while keeping it quiet, weakening both.");
+    if (avg < 45) losses.push("Stakeholder trust eroded. Finance and the executive team will both remember how this was handled.");
+    return { delta, wins, losses };
+}
+exports.vishingScenario = {
+    meta: {
+        id: "vishing",
+        title: "The Voice on the Line",
+        codename: "Deepfake Executive Fraud",
+        blurb: "A flawless AI clone of the CFO's voice calls in an urgent $4M wire and an MFA reset on her account. There is no malware here. The attack is trust, and your process is the target.",
+        premise: "No exploit, no implant, no breach of your systems. Just a phone call in a voice that sounds exactly like your CFO, calling in an urgent confidential wire and a reset of her own security, while she is conveniently unreachable in the air. You will work it from three seats: decide whether to trust a voice or verify it, race the bank's recall window if the money moves, evict the access an MFA reset handed away, and answer for a loss, a breach, and two terrified employees who followed a process that was never safe.",
+        difficulty: "Hard",
+        accent: "fuchsia",
+        tags: ["Deepfake", "Vishing", "Wire Fraud", "Social Engineering"],
+        acts: 3,
+    },
+    firstScene: "vp_start",
+    initialState: () => ({
+        scene: "vp_start",
+        clock: 0,
+        caseStrength: 18,
+        dataExposure: 42,
+        trust: { legal: 55, eng: 55, exec: 55 },
+        flags: {},
+        intel: [],
+        log: [],
+    }),
+    scenes: SCENES,
+    meterLabels: {
+        primary1: "Verification",
+        primary2: "Funds & Access at Risk",
+        s1: "Legal",
+        s2: "Finance",
+        s3: "Executive",
+    },
+    scoreAdjust,
+};
+
+  return exports.vishingScenario;
+})();
+
+const wiperScenario = (function(){
+  const exports = {}; const module = { exports: exports };
+  const require = function(){ return {}; };
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.wiperScenario = void 0;
+/**
+ * Scenario: "Scorched Earth"
+ * A destructive wiper attack. Three seats:
+ *   Act 1  - SOC Analyst         (the destruction)
+ *   Act 2  - Incident Commander  (eradicate and recover, with no one to pay)
+ *   Act 3  - CISO                (attribution, the theft under the fire, disclosure)
+ *
+ * Ground truth: a destructive wiper detonates across servers and workstations,
+ * corrupting master boot records and overwriting files. There is no ransom note
+ * and no decryptor, because the goal is destruction, not extortion. The wiper was
+ * pushed through a compromised administrative tool. The fog: the wipe is also a
+ * cover, a quiet data exfiltration ran before detonation, and attribution
+ * (criminal, hacktivist, nation-state) shapes the response. Recovery hinges on
+ * whether your backups survived, and there is no option to buy your way out.
+ */
+function avgOk(s) { return (s.trust.legal + s.trust.eng + s.trust.exec) / 3 >= 48; }
+const SCENES = {
+    // ───────────────────────────── ACT 1 - SOC ANALYST ─────────────────────────
+    wp_start: {
+        id: "wp_start",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 04:12",
+        title: "No Note",
+        body: [
+            "It starts as a flood of EDR alerts and ends, within minutes, as silence. Machines are bricking across the estate, file servers throwing mass-corruption events, workstations rebooting into a black screen and a message that they have no operating system. The pattern spreads with the unhurried confidence of something using legitimate management infrastructure to do it.",
+            "You wait for the ransom note, because that is the script. It does not come. No countdown, no wallet address, no demand. Whoever did this does not want money. They want your systems gone, and underneath the destruction is the colder question of what they took before they lit the match.",
+        ],
+        intelReveal: [
+            "Destructive wiper detonating across servers and workstations: corrupted boot records, overwritten files.",
+            "No ransom note, no decryptor. The objective is destruction, not extortion.",
+            "(unconfirmed) Spreading via legitimate administrative tooling. A wipe with no demand often follows a data theft.",
+        ],
+        choices: [
+            {
+                label: "Isolate network segments to stop the spread now",
+                detail: "Sever the segments still alive from the ones being destroyed. Save what you can.",
+                effect: { clock: 10, caseStrength: 12, dataExposure: -8, set: ["isolated", "contained"], trust: { eng: -4 }, intel: ["You cut network segments at the core. The wipe slows sharply; some of the estate is now walled off from the destruction."] },
+                next: "wp_isolate",
+            },
+            {
+                label: "Cut the propagation channel: disable the admin tool spreading it",
+                detail: "Kill the distribution mechanism the wiper is riding.",
+                effect: { clock: 8, caseStrength: 8, dataExposure: -4, set: ["spreadKilled", "contained"], intel: ["You disable the management tool and the service account behind the push. New detonations stop; the channel goes quiet."] },
+                next: "wp_killspread",
+            },
+            {
+                label: "Preserve forensics and hunt for whether data was stolen first",
+                detail: "A wipe with no demand is often cleanup. Find the theft before it is unrecoverable.",
+                effect: { clock: 35, caseStrength: 6, set: ["huntedExfil"], intel: ["You start preserving volatile evidence and hunting for staging and exfiltration that may have preceded the wipe."] },
+                next: "wp_forensic",
+            },
+            {
+                label: "Pull the entire network; shut everything down",
+                detail: "Maximum containment, maximum damage to operations. Nothing talks to anything.",
+                effect: { clock: 5, caseStrength: 14, dataExposure: 8, set: ["killSwitch", "contained", "blindOps"], trust: { eng: -10, exec: -6 }, intel: ["You pull the core uplinks. The spread stops cold. So does the company, and so does most of your ability to watch what is happening."] },
+                next: "wp_killswitch",
+            },
+        ],
+    },
+    wp_isolate: {
+        id: "wp_isolate",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 04:30",
+        title: "Walls Up",
+        body: [
+            "The segmentation holds and the destruction stops climbing. Whole zones are dark and unrecoverable, but others, the ones you walled off in time, are intact, and intact is the most valuable word available this morning.",
+            "Containment bought you a recovery to have. What it has not told you is whether the wipe was the whole point or just the loud finish.",
+        ],
+        choices: [
+            {
+                label: "Now hunt for data theft before the evidence is gone",
+                detail: "A demandless wipe is often a cover. Look for what left.",
+                effect: { clock: 30, caseStrength: 6, set: ["huntedExfil"], intel: ["With the spread walled off, you turn to whether data was exfiltrated before detonation."] },
+                next: "wp_forensic",
+                show: (s) => !s.flags.huntedExfil,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Get the response organized; the recovery will be large.",
+                effect: { clock: 8 },
+                next: "wp_warroom",
+            },
+        ],
+    },
+    wp_killspread: {
+        id: "wp_killspread",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 04:25",
+        title: "Channel Cut",
+        body: [
+            "With the administrative tool disabled, the wiper loses its delivery mechanism and new detonations stop. The machines already hit are already gone, but the bleeding edge of the spread is closed, and the attacker has lost their easy way to keep pushing.",
+            "It is not eradication. The compromise that let them use your own tooling is still somewhere in the estate, waiting to see what you do next.",
+        ],
+        choices: [
+            {
+                label: "Now hunt for data theft before the evidence is gone",
+                detail: "Find out whether the destruction was covering an exfiltration.",
+                effect: { clock: 32, caseStrength: 6, set: ["huntedExfil"], intel: ["You pivot to hunting for staging and exfiltration that may have run before the wipe."] },
+                next: "wp_forensic",
+                show: (s) => !s.flags.huntedExfil,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Hand it up with the channel closed.",
+                effect: { clock: 8 },
+                next: "wp_warroom",
+            },
+        ],
+    },
+    wp_forensic: {
+        id: "wp_forensic",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 05:00",
+        title: "Under the Ash",
+        body: [
+            "You go looking for the thing the fire was meant to hide, and you find it in the traffic logs the wiper did not reach. In the days before detonation, large volumes of data were staged and pushed to external infrastructure: customer records, source, internal documents. The wipe was not the operation. It was the cleanup, designed to destroy the evidence of the theft and the means to investigate it.",
+            "That reframes everything. This is a breach with a demolition on top, and the demolition was the part meant to keep you from noticing the breach.",
+        ],
+        intelReveal: [
+            "CONFIRMED: large-scale data exfiltration ran in the days before the wipe. The destruction was cover.",
+            "Stolen data includes customer records, source code, and internal documents.",
+            "Attribution leans toward a capable, deliberate actor rather than opportunistic crime.",
+        ],
+        onEnter: () => ({ caseStrength: 10, set: ["exfilFound", "dataStolen"], intel: ["The wiper was the curtain falling on a theft that already happened."] }),
+        choices: [
+            {
+                label: "Isolate the live segments to stop ongoing destruction",
+                detail: "You understand it now. Contain what is still spreading.",
+                effect: { clock: 12, caseStrength: 6, dataExposure: -6, set: ["isolated", "contained"], intel: ["You wall off the segments still alive while preserving the forensic picture."] },
+                next: "wp_isolate",
+                show: (s) => !s.flags.contained,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Take the full, ugly picture to the war room.",
+                effect: { clock: 8 },
+                next: "wp_warroom",
+            },
+        ],
+    },
+    wp_killswitch: {
+        id: "wp_killswitch",
+        act: 1,
+        role: "SOC Analyst",
+        clockLabel: "Tue 04:17",
+        title: "Everything Off",
+        body: [
+            "Pulling the whole network stops the wiper in its tracks, because nothing can reach anything to keep destroying it. It is the most complete containment there is, and it costs you the entire company at once: every system dark, every user stranded, and most of your visibility gone with the links you just cut.",
+            "You stopped the destruction and, in the same motion, blinded yourself to whether it was hiding something. A network you pulled the plug on is not a network you are learning from.",
+        ],
+        intelReveal: [
+            "Full network shutdown. Wiper spread halted; operations entirely down; investigative visibility severely degraded.",
+            "(unconfirmed) Whether data was exfiltrated before the wipe is now much harder to determine.",
+        ],
+        choices: [
+            {
+                label: "Hunt the wreckage for evidence of data theft before escalating",
+                detail: "Even blind, look for whether the wipe was covering an exfiltration.",
+                effect: { clock: 30, caseStrength: 6, set: ["huntedExfil"], intel: ["You comb what logs survived for signs that data left before the lights went out."] },
+                next: "wp_forensic",
+                show: (s) => !s.flags.huntedExfil,
+            },
+            {
+                label: "Escalate to the Incident Commander",
+                detail: "Own the call and organize the recovery.",
+                effect: { clock: 8 },
+                next: "wp_warroom",
+            },
+        ],
+    },
+    // ─────────────────────────── ACT 2 - INCIDENT COMMANDER ─────────────────────
+    wp_warroom: {
+        id: "wp_warroom",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Tue, morning",
+        title: "Nothing to Pay",
+        body: [
+            "You are running it now, and the room feels different from a ransomware bridge because there is no lever to pull. Nobody to negotiate with, no decryptor to buy, no number that makes it stop. Raj from Operations wants to start rebuilding immediately and keeps asking how long. Priya from Legal wants to know who did this and, more urgently, whether data was stolen, because attribution and theft are what turn an outage into a federal matter. The CEO wants both answers and does not have either.",
+            "The only way out is through: evict them, recover from whatever survived, and find out what the fire was hiding.",
+        ],
+        onEnter: (s) => {
+            const reveal = [];
+            if (!s.flags.contained) { reveal.push("BAD: the wiper is still spreading as this meeting starts, and it is reaching the backup tier."); return { dataExposure: 10, set: ["backupsHit"], intel: reveal }; }
+            reveal.push("The destruction is contained. Recovery now depends on what survived and whether the attacker is truly out.");
+            if (!s.flags.huntedExfil) reveal.push("(unconfirmed) Nobody has yet established whether data was stolen before the wipe.");
+            return { intel: reveal };
+        },
+        choices: [
+            {
+                label: "Engage DFIR and law enforcement; eradicate persistence, then rebuild from clean backups in sequence",
+                detail: "The disciplined path. Evict the attacker before you trust anything you restore.",
+                effect: { clock: 70, caseStrength: 12, set: ["firmEngaged", "lawEnforcement"], trust: { legal: 10, exec: -4 }, intel: ["A DFIR firm and the relevant agency are engaged. The plan is sequenced: eradicate first, rebuild the identity layer, restore from known-good media only once the actor is provably gone."] },
+                next: "wp_recover_proper",
+            },
+            {
+                label: "Rush recovery: rebuild and restore fast to get the business back",
+                detail: "Move now with your own team. Dangerous if the attacker still has a foothold.",
+                effect: { clock: 30, trust: { eng: 8, exec: 6 } },
+                next: "wp_rush",
+            },
+            {
+                label: "Downplay it as an IT outage; restore quietly and say nothing about attribution or theft",
+                detail: "Keep it small and internal. Legal winces.",
+                effect: { clock: 25, caseStrength: -6, set: ["quietHandling"], trust: { eng: 4, legal: -12 }, intel: ["The decision is to frame it as a technical outage and rebuild quietly, leaving the theft and attribution questions deliberately unasked."] },
+                next: "wp_quiet",
+            },
+        ],
+    },
+    wp_recover_proper: {
+        id: "wp_recover_proper",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "The following days",
+        title: "Eradicate, Then Rebuild",
+        body: [
+            "Doing it right means accepting that the fastest visible path is a trap. You eradicate the attacker's footholds and the compromised tooling first, rebuild the identity layer, and only then restore, from media you can actually trust, in a sequence that does not hand the destroyer a freshly rebuilt environment to destroy again.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.backupsHit) {
+                return { caseStrength: 6, dataExposure: 6, set: ["eradicated", "rootCauseFixed", "secretsRotated"], intel: ["BAD: the wiper reached the backup tier before containment, so there is little clean media to restore from. The attacker is evicted and the root cause closed, but recovery is now a bare-metal rebuild measured in weeks."] };
+            }
+            return { caseStrength: 14, dataExposure: -18, set: ["eradicated", "rebuiltClean", "rootCauseFixed", "secretsRotated", "backupsIntact"], intel: ["GOOD: you contained before the wiper reached backups. Persistence evicted, identity layer rebuilt, systems restored from clean media in sequence. The environment is yours again."] };
+        },
+        choices: [
+            {
+                label: "Move to the disclosure decision as CISO",
+                detail: "The recovery is in hand. Now attribution and what you tell the world.",
+                effect: { clock: 20 },
+                next: "wp_disclosure",
+            },
+        ],
+    },
+    wp_rush: {
+        id: "wp_rush",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Tue–Wed",
+        title: "Fast, or Right",
+        body: [
+            "Your team is fast and desperate to fight, and the pressure to show green dashboards by tomorrow is enormous. The destructive-malware question is the same one ransomware asks and answers the same way: restore before you have evicted the actor and you have simply built them a fresh environment to wipe again, this time with your own recovery effort wasted on top.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.backupsHit) return { intel: ["The backup tier was hit, so there is little to restore quickly regardless. Speed cannot buy back media that was overwritten."] };
+            return { intel: ["The backups survived. The only question is whether you slow down enough to evict the attacker before you trust them."] };
+        },
+        choices: [
+            {
+                label: "Eradicate the foothold and the compromised tooling first, then restore",
+                detail: "The disciplined pivot. Slower to value, no second detonation.",
+                effect: { clock: 45, caseStrength: 10, dataExposure: -14, set: ["eradicated", "secretsRotated"], clear: ["persistenceRemained"], intel: ["You take the time to evict the attacker and rebuild the compromised management layer before restoring. It is slower, and it holds."] },
+                next: "wp_disclosure",
+            },
+            {
+                label: "Restore now, harden later",
+                detail: "Get systems back today. Reckless if the attacker is still inside.",
+                effect: { clock: 20, trust: { eng: 6, exec: 6 }, set: ["rushedRestore"] },
+                next: (s) => (s.flags.isolated || s.flags.spreadKilled || s.flags.huntedExfil) ? "wp_disclosure" : "wp_redetonate",
+            },
+        ],
+    },
+    wp_quiet: {
+        id: "wp_quiet",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Wed",
+        title: "Calling It an Outage",
+        body: [
+            "Framing a wiper as an IT outage works right up until it does not. If data was stolen, the obligations attach whether or not you named the incident, and a destructive attack large enough to take down the estate is not a thing that stays quiet on your preferred timeline. Attribution leaks. Employees talk. Customers notice systems that were down for days.",
+            "Discretion bought you a quiet week and a louder month.",
+        ],
+        intelReveal: ["Treating a destructive attack as a routine outage does not pause the disclosure clock if data was taken."],
+        onEnter: () => ({ set: ["lateNotice"] }),
+        choices: [
+            {
+                label: "Reverse course: DFIR, law enforcement, and a proper recovery",
+                detail: "Do it right, late. Better than not at all.",
+                effect: { clock: 30, caseStrength: 6, set: ["firmEngaged", "lawEnforcement"], trust: { legal: 6 }, intel: ["You stop trying to keep it small and stand up a real recovery."] },
+                next: "wp_recover_proper",
+            },
+            {
+                label: "Rebuild quietly and leave the theft question unasked",
+                detail: "Get the lights on, say nothing, hope no data left.",
+                effect: { clock: 25, dataExposure: 6, set: ["quietRebuild"], trust: { legal: -6 }, intel: ["You rebuild what you can in silence. Whether the wipe was covering a theft is a question deliberately never answered."] },
+                next: "wp_disclosure",
+            },
+        ],
+    },
+    wp_redetonate: {
+        id: "wp_redetonate",
+        act: 2,
+        role: "Incident Commander",
+        clockLabel: "Thu",
+        title: "Twice to the Ground",
+        body: [
+            "You restored before you evicted them, and for about a day it looked like a recovery. Then the wiper runs again, through the same foothold and the same compromised tooling nobody removed, and takes the freshly rebuilt environment down with it, along with the morale of everyone who spent the week bringing it back.",
+            "Against a destroyer, eradication is not the boring step before recovery. It is the recovery. Restoring into a live compromise does not save time; it donates a second target.",
+        ],
+        intelReveal: ["RE-WIPED: the attacker re-detonated through persistence that was never removed, destroying the rebuilt environment."],
+        onEnter: () => ({ caseStrength: -16, dataExposure: 26, set: ["reWiped"], trust: { eng: -12, exec: -14 } }),
+        choices: [
+            {
+                label: "Take the wreckage to the executive table",
+                detail: "There is no fast path left. Move to the fallout.",
+                effect: { clock: 30 },
+                next: "wp_disclosure",
+            },
+        ],
+    },
+    // ──────────────────────────────── ACT 3 - CISO ──────────────────────────────
+    wp_disclosure: {
+        id: "wp_disclosure",
+        act: 3,
+        role: "CISO",
+        clockLabel: "Resolution",
+        title: "The Theft Under the Fire",
+        body: [
+            "The technical recovery is settling into whatever shape you gave it. The harder reckoning is what to say. A destructive attack is visible by nature, systems were down, people noticed, and if the wipe was covering a theft, then under the outage everyone could see is a data breach that comes with its own obligations and its own way of surfacing on someone else's schedule.",
+            "Attribution will come out. The only thing you control is whether you are the one who said it first.",
+        ],
+        onEnter: (s) => {
+            if (s.flags.reWiped) return { intel: ["FINAL: a second detonation set recovery back to zero. The board wants to know how this was allowed to happen twice."] };
+            if (s.flags.dataStolen) return { intel: ["FINAL: the wipe was cover for a confirmed data theft. The destruction is survivable; the exfiltration carries notification obligations."] };
+            if (s.flags.rebuiltClean) return { intel: ["FINAL: recovered from clean media without a second hit. Whether data was stolen first remains the open question."] };
+            return { intel: ["FINAL: recovery is grinding along the hard way, and the theft question is still unanswered."] };
+        },
+        choices: [
+            {
+                label: "Disclose proactively: notify customers, regulators, and partners about the theft and the attack",
+                detail: "Get ahead of it. Transparent, costly, defensible.",
+                effect: { clock: 30, set: ["disclosedProperly"], trust: { legal: 10, exec: -6 } },
+                next: (s) => resolveWpEnding(s, "proactive"),
+            },
+            {
+                label: "Disclose the legal minimum, quietly, on the latest allowable timeline",
+                detail: "Limit the noise. Legal's nervous compromise.",
+                effect: { clock: 20, trust: { exec: 6, legal: -2 } },
+                next: (s) => resolveWpEnding(s, "minimal"),
+            },
+            {
+                label: "Say nothing about theft or attribution; call it a technical failure",
+                detail: "Bury it under the outage story. Bet that the theft never surfaces.",
+                effect: { clock: 10, trust: { exec: 8, legal: -12 } },
+                next: (s) => resolveWpEnding(s, "none"),
+            },
+        ],
+    },
+    // ──────────────────────────────── ENDINGS ───────────────────────────────────
+    ending_wp_textbook: {
+        id: "ending_wp_textbook",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Rebuilt Clean",
+        isEnding: true,
+        endingTitle: "Outcome: Contained, Eradicated, and Honest",
+        endingTone: "win",
+        body: [
+            "You contained the wiper before it reached your backups, which gave you a recovery to have. You evicted the attacker and rebuilt the compromised tooling before you trusted a single restored system, so there was no second detonation. And you went looking for the theft the fire was meant to hide, found it, and disclosed it like an adult instead of hoping it stayed buried.",
+            "A destructive attack with no one to pay is graded on recovery and honesty, and you scored on both. The systems came back clean, the data theft became a story you told rather than one told about you, and attribution landed with your fingerprints on the disclosure, not the cover-up.",
+            "When there is no ransom to refuse, the discipline is the whole defense. You had it.",
+        ],
+    },
+    ending_wp_recovered: {
+        id: "ending_wp_recovered",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Back from the Ashes",
+        isEnding: true,
+        endingTitle: "Outcome: Recovered, the Hard Way",
+        endingTone: "mixed",
+        body: [
+            "You came back. The attacker is out, the systems are rebuilt, and the company is operating, even if the path here was longer and rougher than a clean run would have been. Some media was lost, some corners are visible in the rear-view mirror, a root cause closed a little later than ideal.",
+            "The honest summary holds: destruction survived, attacker evicted, lessons logged. The after-action will be long and the backup architecture will get the attention it should have had before any of this.",
+            "Not the clean save. A genuine recovery from an attack designed to make recovery impossible.",
+        ],
+    },
+    ending_wp_messy: {
+        id: "ending_wp_messy",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Survived the Burn",
+        isEnding: true,
+        endingTitle: "Outcome: Through It, with Open Questions",
+        endingTone: "mixed",
+        body: [
+            "You got through it. Systems are coming back, the company is functioning, and the worst-case scenarios did not arrive, or at least have not announced themselves. There is a residue of uncertainty: a theft question half-answered, an eradication that may have been incomplete, an attribution left vague.",
+            "None of it sank you. The after-action will be a long one, heavy on the resilience and detection gaps that a destructive attack exposes mercilessly.",
+            "You did not lose. You paid tuition, in downtime and rebuilt machines.",
+        ],
+    },
+    ending_wp_rewiped: {
+        id: "ending_wp_rewiped",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Twice to the Ground",
+        isEnding: true,
+        endingTitle: "Outcome: You Restored Into a Second Wipe",
+        endingTone: "loss",
+        body: [
+            "Speed was the enemy and you sided with it. Bringing systems back before the attacker was evicted did not save time; it handed a destroyer a freshly rebuilt environment and the same foothold to destroy it from. The second wipe is worse than the first, not technically but organizationally, because it lands on a team that just spent itself bringing things back.",
+            "With a wiper, eradication is the recovery. Everything restored before the actor is provably gone is restored on borrowed time, and the loan came due. You learned the most expensive rule in destructive incidents the most expensive way.",
+            "The first wipe was the attacker's. The second one you helped with.",
+        ],
+    },
+    ending_wp_undisclosed: {
+        id: "ending_wp_undisclosed",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "The Theft Under the Fire",
+        isEnding: true,
+        endingTitle: "Outcome: You Hid the Breach Under the Outage",
+        endingTone: "loss",
+        body: [
+            "You confirmed the wipe was covering a data theft, and then you let the outage be the whole story. Systems-down is an easy thing to talk about; data-stolen is not, so you talked about the first and stayed silent on the second, which is exactly the outcome the attacker engineered when they chose to demolish the evidence on their way out.",
+            "It surfaces the way these do, through the stolen data appearing somewhere it should not, or a regulator asking why a destructive intrusion this size produced no breach notice. The demolition was meant to bury the theft. By staying quiet, you finished the job for them.",
+            "The wiper destroyed your systems. Concealing the theft is the part you chose.",
+        ],
+    },
+    ending_wp_long_dark: {
+        id: "ending_wp_long_dark",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Down for Weeks",
+        isEnding: true,
+        endingTitle: "Outcome: Nothing Clean Left to Restore",
+        endingTone: "loss",
+        body: [
+            "You evicted the attacker and did the work honestly, but you were too slow to contain, and by the time you walled off the spread the wiper had already reached the backup tier. With little clean media to restore from, recovery stopped being a restore and became a bare-metal rebuild measured in weeks: systems reconstructed from source and memory, operations degraded for longer than the business had budgeted to survive.",
+            "There was no ransom to refuse and no decryptor to buy, so the backups were always the whole game, and the destructive attack found them because containment came a beat too late. The real failure was older and quieter, sitting in a risk register where backup isolation was marked as someday.",
+            "You did everything right except the one thing, fast enough, that would have let the rest matter.",
+        ],
+    },
+    ending_wp_blind: {
+        id: "ending_wp_blind",
+        act: 3, role: "CISO", clockLabel: "Resolution",
+        title: "Burned the Evidence",
+        isEnding: true,
+        endingTitle: "Outcome: You Pulled the Plug and Learned Nothing",
+        endingTone: "loss",
+        body: [
+            "Pulling the whole network stopped the wiper, and for the destruction that was effective. But you tore out your own visibility in the same motion and then never did the unglamorous work of hunting for what the attack was hiding. You traded a spreading wipe for a total blackout, and in the blackout you never answered the question that mattered: was the destruction covering a theft?",
+            "Operations spent weeks down, and at the end of it the most important fact about your own incident, whether your customers' data is in someone else's hands, is one you can no longer establish, because the evidence went dark with the network you unplugged. A destructive attack wants exactly this: the destruction is loud enough that you forget to ask what it was for.",
+            "Stopping the wipe and understanding the attack are different jobs. You did the loud one and skipped the one that mattered.",
+        ],
+    },
+};
+function resolveWpEnding(s, disclosure) {
+    if (s.flags.reWiped) return "ending_wp_rewiped";
+    if (disclosure === "none" && s.flags.dataStolen) { s.flags.concealed = true; return "ending_wp_undisclosed"; }
+    if (s.flags.killSwitch && !s.flags.eradicated && !s.flags.huntedExfil) return "ending_wp_blind";
+    if (s.flags.backupsHit && !s.flags.rebuiltClean) return "ending_wp_long_dark";
+    if (s.flags.eradicated && s.flags.rebuiltClean && s.flags.rootCauseFixed && disclosure !== "none" && s.dataExposure < 40 && avgOk(s)) { s.flags.recovered = true; return "ending_wp_textbook"; }
+    if ((s.flags.eradicated || s.flags.rebuiltClean) && disclosure !== "none") { s.flags.recovered = true; return "ending_wp_recovered"; }
+    return "ending_wp_messy";
+}
+function scoreAdjust(s) {
+    let delta = 0;
+    const wins = [];
+    const losses = [];
+    const avg = (s.trust.legal + s.trust.eng + s.trust.exec) / 3;
+    if (s.flags.eradicated) delta += 8;
+    if (s.flags.rebuiltClean) delta += 6;
+    if (s.flags.rootCauseFixed) delta += 6;
+    if (s.flags.huntedExfil) delta += 4;
+    if (s.flags.backupsIntact) delta += 4;
+    if (s.flags.disclosedProperly) delta += 5;
+    if (s.flags.reWiped) delta -= 16;
+    if (s.flags.concealed) delta -= 12;
+    if (s.flags.blindOps && !s.flags.eradicated && !s.flags.huntedExfil) delta -= 12;
+    if (s.flags.backupsHit && !s.flags.rebuiltClean) delta -= 8;
+    if (s.flags.dataStolen && !s.flags.disclosedProperly) delta -= 6;
+    if (s.flags.lateNotice) delta -= 4;
+    if (s.flags.eradicated) wins.push("You evicted the attacker and the compromised tooling before trusting anything you restored.");
+    if (s.flags.rebuiltClean) wins.push("You recovered from clean media instead of restoring the destroyer along with the data.");
+    if (s.flags.backupsIntact) wins.push("You contained before the wiper reached the backups, which preserved your only real path home.");
+    if (s.flags.huntedExfil) wins.push("You looked for the theft the destruction was hiding instead of treating the wipe as the whole story.");
+    if (s.flags.disclosedProperly) wins.push("You disclosed the attack and the theft proactively, keeping the story yours to tell.");
+    if (s.flags.reWiped) losses.push("You restored before eradicating, and the attacker wiped the rebuilt environment a second time.");
+    if (s.flags.blindOps && !s.flags.eradicated && !s.flags.huntedExfil) losses.push("You pulled the network and never investigated, ending blind to whether data was stolen.");
+    if (s.flags.backupsHit && !s.flags.rebuiltClean) losses.push("The wiper reached the backups before you contained, leaving no clean media to restore from.");
+    if (s.flags.concealed) losses.push("You concealed the data theft under the outage story, finishing the cover-up the attacker started.");
+    if (s.flags.dataStolen && !s.flags.disclosedProperly) losses.push("A confirmed data theft went under-disclosed beneath the noise of the outage.");
+    if (avg < 45) losses.push("Stakeholder trust eroded through a long, painful recovery. Confidence will take longer to rebuild than the systems.");
+    return { delta, wins, losses };
+}
+exports.wiperScenario = {
+    meta: {
+        id: "wiper",
+        title: "Scorched Earth",
+        codename: "Destructive Wiper",
+        blurb: "Systems are bricking across the estate and no ransom note ever comes, because the goal is destruction, not money. There is no decryptor to buy, only a recovery to earn and a theft to find under the ash.",
+        premise: "A wiper is tearing through your estate, corrupting boot records and overwriting files, and the silence where a ransom note should be is the most ominous part: nobody wants your money, they want you gone. There is nothing to pay and no decryptor to wait for. You will work it from three seats: contain destruction before it reaches your backups, resist the urge to restore before the attacker is evicted, uncover the data theft the fire was built to hide, and decide what to tell a world that can already see the lights are out.",
+        difficulty: "Hard",
+        accent: "lime",
+        tags: ["Wiper", "Destruction", "DFIR", "Recovery"],
+        acts: 3,
+    },
+    firstScene: "wp_start",
+    initialState: () => ({
+        scene: "wp_start",
+        clock: 0,
+        caseStrength: 14,
+        dataExposure: 40,
+        trust: { legal: 52, eng: 52, exec: 52 },
+        flags: {},
+        intel: [],
+        log: [],
+    }),
+    scenes: SCENES,
+    meterLabels: {
+        primary1: "Containment",
+        primary2: "Damage",
+        s1: "Legal",
+        s2: "Operations",
+        s3: "Executive",
+    },
+    scoreAdjust,
+};
+
+  return exports.wiperScenario;
+})();
+
+const SCENARIOS = [insiderScenario, ransomwareScenario, becScenario, supplyChainScenario, ddosScenario, otScenario, lostDeviceScenario, webBreachScenario, edgeZeroDayScenario, cloudKeyScenario, vishingScenario, wiperScenario];
 
 // ─────────────────────────────── ENGINE ─────────────────────────────────────
 // (Mirrors app/ir-simulator/engine.ts; scenario data below is compiled from source.)
@@ -5587,7 +8378,7 @@ function computeReport(scenario, s) {
 }
 
 // ─────────────────────────────── THEMING ────────────────────────────────────
-const ACCENT = { cyan: "#22d3ee", red: "#f87171", amber: "#fbbf24", purple: "#c084fc", emerald: "#34d399", indigo: "#818cf8", rose: "#fb7185" };
+const ACCENT = { cyan: "#22d3ee", red: "#f87171", amber: "#fbbf24", purple: "#c084fc", emerald: "#34d399", indigo: "#818cf8", rose: "#fb7185", blue: "#60a5fa", teal: "#2dd4bf", orange: "#fb923c", fuchsia: "#e879f9", lime: "#a3e635" };
 const ROLE_COLOR = { "SOC Analyst": "#22d3ee", "Incident Commander": "#fbbf24", "CISO": "#c084fc" };
 const ROLE_ABBR = { "SOC Analyst": "SOC", "Incident Commander": "CMD", "CISO": "CISO" };
 const DIFF_COLOR = { Intro: "#34d399", Standard: "#fbbf24", Hard: "#f87171" };
@@ -5648,7 +8439,7 @@ function selectHtml() {
     '<h1 class="serif">Pick Your Crisis</h1>' +
     '<p class="intro-lead">Each scenario is a branching tabletop you work from three seats as it escalates. Your decisions compound, the intel is incomplete, and the clock never stops. Choose one to begin.</p>' +
     '</div><div class="sc-grid">' + cards + '</div>' +
-    '<p class="sc-note">Four scenarios. Seven endings each. No two paths are the same.</p></div>';
+    '<p class="sc-note">Twelve scenarios. Seven endings each. No two paths are the same.</p></div>';
 }
 
 function introHtml(sc) {
